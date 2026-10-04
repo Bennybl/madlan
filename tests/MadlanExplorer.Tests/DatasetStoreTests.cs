@@ -87,7 +87,10 @@ public class DatasetStoreTests
             DatabaseName = $"MadlanTests-{Guid.NewGuid():N}"
         });
 
-        return new DatasetStore(options, environment);
+        var localityCatalog = new IsraeliLocalityCatalog(options, environment);
+        localityCatalog.Load();
+
+        return new DatasetStore(options, environment, localityCatalog);
     }
 
     private static long CountReports(Microsoft.Data.Sqlite.SqliteConnection connection)

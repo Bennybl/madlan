@@ -16,11 +16,14 @@ public static class Application
     {
         var builder = WebApplication.CreateBuilder(args);
         builder.Services.Configure<DatasetOptions>(builder.Configuration.GetSection(DatasetOptions.SectionName));
+        builder.Services.AddSingleton<IsraeliLocalityCatalog>();
         builder.Services.AddSingleton<DatasetStore>();
 
         var app = builder.Build();
+        var localityCatalog = app.Services.GetRequiredService<IsraeliLocalityCatalog>();
         var datasetStore = app.Services.GetRequiredService<DatasetStore>();
 
+        localityCatalog.Load();
         datasetStore.Load();
         app.Lifetime.ApplicationStopping.Register(datasetStore.Dispose);
 

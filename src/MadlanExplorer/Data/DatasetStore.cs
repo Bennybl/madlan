@@ -34,9 +34,13 @@ public class DatasetStore : IDisposable
 
     private readonly string _dataFilePath;
     private readonly string _connectionString;
+    private readonly IsraeliLocalityCatalog _localityCatalog;
     private SqliteConnection? _keeperConnection;
 
-    public DatasetStore(IOptions<DatasetOptions> options, IHostEnvironment environment)
+    public DatasetStore(
+        IOptions<DatasetOptions> options,
+        IHostEnvironment environment,
+        IsraeliLocalityCatalog localityCatalog)
     {
         var settings = options.Value;
 
@@ -45,6 +49,7 @@ public class DatasetStore : IDisposable
             ? contentRootDataFilePath
             : Path.Combine(AppContext.BaseDirectory, settings.DataFile);
         _connectionString = $"Data Source={settings.DatabaseName};Mode=Memory;Cache=Shared;Pooling=False";
+        _localityCatalog = localityCatalog;
     }
 
     public DatasetMetadata Metadata { get; private set; } = new();
@@ -187,7 +192,7 @@ public class DatasetStore : IDisposable
         command.ExecuteNonQuery();
     }
 
-    private static NormalizedDealReport Normalize(
+    private NormalizedDealReport Normalize(
         IReadOnlyDictionary<string, string> fields,
         out IReadOnlyList<string> qualityFlags)
     {
@@ -217,10 +222,11 @@ public class DatasetStore : IDisposable
         return normalized;
     }
 
-    private static string NormalizeCity(string value)
+    private string NormalizeCity(string value)
     {
         var normalized = NormalizeText(value);
-        return CityAliases.TryGetValue(normalized, out var city) ? city : normalized;
+        var alias = CityAliases.TryGetValue(normalized, out var city) ? city : normalized;
+        return _localityCatalog.FindCanonicalHebrewName(alias) ?? alias;
     }
 
     private static string NormalizeText(string value) => string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));

@@ -19,5 +19,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="../../madlan_deals_sample.csv" Link="data/madlan_deals_sample.csv" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../src/MadlanExplorer/Data/israeli-localities.json" TargetPath="Data/israeli-localities.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
