@@ -1,9 +1,10 @@
 using Microsoft.AspNetCore.Mvc.Testing;
+using MadlanExplorer;
 using Xunit;
 
 namespace MadlanExplorer.Tests;
 
-public sealed class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly WebApplicationFactory<Program> _factory;
 

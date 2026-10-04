@@ -1,9 +1,26 @@
-var builder = WebApplication.CreateBuilder(args);
+namespace MadlanExplorer;
 
-var app = builder.Build();
+public class Program
+{
+    public static void Main(string[] args)
+    {
+        var app = Application.Build(args);
 
-app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
+        app.Run();
+    }
+}
 
-app.Run();
+public static class Application
+{
+    public static WebApplication Build(string[] args)
+    {
+        var builder = WebApplication.CreateBuilder(args);
+        var app = builder.Build();
 
-public partial class Program;
+        app.MapGet("/healthz", () => Results.Ok(new HealthResponse("ok")));
+
+        return app;
+    }
+}
+
+public record HealthResponse(string Status);
