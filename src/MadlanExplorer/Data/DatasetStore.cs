@@ -18,20 +18,6 @@ public class DatasetStore : IDisposable
         "has_balcony", "has_safe_room", "deal_date", "price_nis", "price_per_sqm", "source"
     ];
 
-    private static readonly IReadOnlyDictionary<string, string> CityAliases =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["Jerusalem"] = "ירושלים",
-            ["תל אביב"] = "תל אביב-יפו",
-            ["תל אביב יפו"] = "תל אביב-יפו",
-            ["Tel Aviv-Yafo"] = "תל אביב-יפו",
-            ["ת\"א"] = "תל אביב-יפו",
-            ["ב\"ש"] = "באר שבע",
-            ["באר-שבע"] = "באר שבע",
-            ["בית-שמש"] = "בית שמש",
-            ["מודיעין-מכבים-רעות"] = "מודיעין מכבים רעות"
-        };
-
     private readonly string _dataFilePath;
     private readonly string _connectionString;
     private readonly IsraeliLocalityCatalog _localityCatalog;
@@ -225,8 +211,7 @@ public class DatasetStore : IDisposable
     private string NormalizeCity(string value)
     {
         var normalized = NormalizeText(value);
-        var alias = CityAliases.TryGetValue(normalized, out var city) ? city : normalized;
-        return _localityCatalog.FindCanonicalHebrewName(alias) ?? alias;
+        return _localityCatalog.FindCanonicalHebrewName(normalized) ?? normalized;
     }
 
     private static string NormalizeText(string value) => string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));

@@ -42,7 +42,7 @@ public class DatasetStoreTests
 
         Assert.Contains("4,331,000", rawJson);
         Assert.NotNull(normalized);
-        Assert.Equal("בית שמש", normalized.City);
+        Assert.Equal("בית-שמש", normalized.City);
         Assert.Equal(5.5m, normalized.Rooms);
         Assert.Equal(4_331_000m, normalized.PriceNis);
         Assert.Equal(new DateOnly(2024, 4, 9), normalized.DealDateStart);

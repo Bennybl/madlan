@@ -28,6 +28,10 @@ The next test run exposed a source-directory content-root path under `WebApplica
 
 ## Commit: feat: add Israeli locality catalog
 
-The user provided `israeli towns.csv` and requested a reusable class containing the locality data for future use. The source uses Windows-1255 Hebrew encoding, so it was converted once into the committed UTF-8 `israeli-localities.json` runtime asset. `IsraeliLocalityCatalog` loads 1,316 typed localities at startup, supports lookup by code and Hebrew/English name, and is used by city normalization after the explicit aliases.
+The user provided `israeli towns.csv` and requested a reusable class containing the locality data for future use. The source uses Windows-1255 Hebrew encoding, so it was converted once into the committed UTF-8 `israeli-localities.json` runtime asset. `IsraeliLocalityCatalog` loads 1,316 typed localities at startup, supports lookup by code and Hebrew/English name, and is used by city normalization.
 
 The first conversion used Hebrew CSV header literals through PowerShell and failed at the encoding boundary. The converter was changed to decode Windows-1255 and use the file's stable column positions. The first catalog test then revealed case-sensitive JSON deserialization against camelCase JSON properties; enabling case-insensitive property matching corrected the issue. The Docker test target passed all six tests afterward.
+
+## Commit: refactor: use only official locality names
+
+The user requested removal of the manually maintained city-alias map. City normalization now uses only exact Hebrew or English matches from the official locality catalog. Noncanonical names, abbreviations and typographical variants remain unchanged until a later data-quality policy addresses them. The test that previously expected an alias conversion for `בית-שמש` now verifies that the source value is preserved.
