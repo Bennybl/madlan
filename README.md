@@ -25,4 +25,4 @@ Open `http://localhost:8080/healthz`.
 
 ## Current scope
 
-Step 1 creates the application skeleton only. CSV loading, SQLite, query APIs and the Hebrew interface are added in later steps.
+The application loads the bundled CSV into shared in-memory SQLite at startup. It preserves raw report fields and row numbers, normalizes the fields needed for later querying, and keeps the database alive for the process lifetime. Query APIs and the Hebrew interface are added in later steps.

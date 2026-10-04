@@ -4,4 +4,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CsvHelper" Version="33.1.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../../madlan_deals_sample.csv" Link="data/madlan_deals_sample.csv" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
