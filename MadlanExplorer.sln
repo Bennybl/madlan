@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MadlanExplorer", "src\MadlanExplorer\MadlanExplorer.csproj", "{B8F486CB-ED5C-4634-80D4-941EB5D5D0C5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MadlanExplorer.Tests", "tests\MadlanExplorer.Tests\MadlanExplorer.Tests.csproj", "{F1BC5AEE-21DA-46F3-93D7-EB07C0F8DD7B}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B8F486CB-ED5C-4634-80D4-941EB5D5D0C5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B8F486CB-ED5C-4634-80D4-941EB5D5D0C5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B8F486CB-ED5C-4634-80D4-941EB5D5D0C5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B8F486CB-ED5C-4634-80D4-941EB5D5D0C5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F1BC5AEE-21DA-46F3-93D7-EB07C0F8DD7B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F1BC5AEE-21DA-46F3-93D7-EB07C0F8DD7B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F1BC5AEE-21DA-46F3-93D7-EB07C0F8DD7B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F1BC5AEE-21DA-46F3-93D7-EB07C0F8DD7B}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
