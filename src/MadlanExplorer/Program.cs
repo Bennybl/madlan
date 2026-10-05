@@ -25,6 +25,7 @@ public static class Application
         builder.Services.AddHttpClient<ILlmProvider, GrokLlmProvider>();
         builder.Services.AddSingleton<QueryGenerationService>();
         builder.Services.AddSingleton<QueryVerificationService>();
+        builder.Services.AddSingleton<ResultSummaryService>();
         builder.Services.AddSingleton<MadlanApplicationService>();
 
         var app = builder.Build();
