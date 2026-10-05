@@ -109,3 +109,7 @@ The first compile after removing the internal response contracts found the now-u
 Added a provider-neutral LLM contract, stage/model configuration and a Grok HTTP adapter. Query generation is orchestrated by `MadlanApplicationService`, preserves the original prompt, accepts only structured query/clarification/unsupported outcomes, and validates generated filters in C# before returning them.
 
 Fake-provider tests verify model selection, prompt preservation, structured query filters and malformed output rejection. The Docker .NET 10 test suite passed all 18 tests.
+
+## Review correction: strengthen step 8 acceptance criteria
+
+Reviewing the Grok query-generation work against the challenge found missing structured-output guards, incomplete prompt context, inactive provider selection, insufficient graceful-failure behavior and missing HTTP fake-provider tests. The step 8 plan now makes these explicit implementation and verification requirements before approval.
