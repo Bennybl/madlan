@@ -3,7 +3,7 @@
 
   const NETWORK_ERROR_MESSAGE = "לא ניתן היה להתחבר לשרת. בדקו את החיבור ונסו שוב.";
   const REQUEST_TIMEOUT_MESSAGE = "הבקשה ארכה זמן רב מדי ולא התקבלה תשובה. נסו שוב או השתמשו בסינון הידני.";
-  const ASK_TIMEOUT_MS = 70000;
+  const ASK_TIMEOUT_MS = 130000;
   const NUMBER_FORMAT = new Intl.NumberFormat("he-IL");
 
   const dealDetailCache = new Map();
@@ -441,7 +441,7 @@
 
     const token = beginRequest();
     resetInterpretationAndSummary();
-    askStatus.textContent = "מעבד את השאלה… זה עשוי לקחת עד דקה, כי כמה בדיקות אוטומטיות רצות ברקע.";
+    askStatus.textContent = "מעבד את השאלה… זה עשוי לקחת עד כשתי דקות, כי כמה בדיקות אוטומטיות רצות ברקע.";
 
     const status = byId("results-status");
     status.hidden = false;
