@@ -20,7 +20,6 @@ public static class Application
         builder.Services.AddSingleton<IsraeliLocalityCatalog>();
         builder.Services.AddSingleton<DatasetStore>();
         builder.Services.AddSingleton<IDealRepository, SqliteDealRepository>();
-        builder.Services.AddSingleton<DatasetService>();
         builder.Services.AddSingleton<QueryService>();
         builder.Services.AddSingleton<MadlanApplicationService>();
 

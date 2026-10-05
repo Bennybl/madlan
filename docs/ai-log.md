@@ -97,3 +97,9 @@ The user requested conventional ASP.NET Core Web API structure. Replaced the min
 ## Commit: refactor: use one controller and application service
 
 The user clarified that the API must use one controller that delegates to an application service. Replaced the three resource controllers with `MadlanController` and introduced `MadlanApplicationService`. It coordinates dataset, manual query and deal-detail requests; later LLM stages will be added to this service, while controllers remain HTTP-only.
+
+## Commit: refactor: expose one natural-language endpoint
+
+The user clarified that the public controller must expose only the natural-language product entry point. Replaced the dataset, manual-query and deal-detail routes with `POST /api/ask`. It preserves the original prompt and delegates it to `MadlanApplicationService`; the next approved step adds the provider-neutral Grok workflow behind this application-service method.
+
+The first compile after removing the internal response contracts found the now-unused `DatasetService` still depended on one of them. Removing that obsolete service and its registration fixed the build; the repository remains available for the application service when the LLM workflow is added.

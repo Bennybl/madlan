@@ -76,14 +76,10 @@ Keep the original prompt unchanged for both verifiers. Bind the workflow to the 
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/dataset` | File identifier, coverage, quality summary and filter options |
-| `POST /api/interpret` | Hebrew question -> generated and verified filters or clarification |
 | `POST /api/ask` | Original question -> verified filters, deterministic results and verified summary |
-| `POST /api/query` | Filters -> metrics, evidence and warnings |
-| `GET /api/deals/{id}` | Original reports and quality details |
 | `GET /healthz` | Application is running with its dataset loaded |
 
-Use the same query service and repository contract for manual and interpreted searches. Return a bounded evidence page and cursor; the browser requests later pages explicitly.
+The application service owns the `/api/ask` workflow. It calls the LLM stages, query service and repository without exposing those internal operations as public endpoints. Return bounded evidence in the final response.
 
 Use configurable deadlines: initially 15 seconds per model call, 65 seconds for the complete server workflow, and 70 seconds for the browser. Propagate cancellation and stop remaining stages after a failure. No automatic retries. Invalid model output, refusal, timeout or outage produces a clear Hebrew message and leaves manual filtering available. Handle missing API credentials the same way. There is no application rate limiter, quota store or concurrency limiter.
 
