@@ -4,6 +4,8 @@ namespace MadlanExplorer;
 
 public class DealQueryService
 {
+    private const int MinimumMetricContributorCount = 5;
+
     private readonly DatasetStore _datasetStore;
 
     public DealQueryService(DatasetStore datasetStore)
@@ -22,11 +24,7 @@ public class DealQueryService
         var ratios = positivePrices.Where(deal => deal.SizeSqm is > 0).Select(deal => deal.PriceNis!.Value / deal.SizeSqm!.Value).ToList();
         AddExclusion(exclusions, "missing_or_non_positive_area", positivePrices.Count - ratios.Count);
 
-        var warnings = new List<string>();
-        if (positivePrices.Any(deal => deal.PriceNis < 100_000)) warnings.Add("low_price_reported");
-        if (positivePrices.Count < 5) warnings.Add("price_metric_has_fewer_than_five_contributors");
-        if (ratios.Count < 5) warnings.Add("price_per_sqm_metric_has_fewer_than_five_contributors");
-        if (positivePrices.Any(deal => HasSuppliedPricePerSqmMismatch(deal))) warnings.Add("supplied_price_per_sqm_mismatch");
+        var warnings = GetWarnings(positivePrices, ratios);
 
         return new DealQueryResult
         {
@@ -80,6 +78,16 @@ public class DealQueryService
     private static bool MatchesText(string? value, string? filter) => string.IsNullOrWhiteSpace(filter) || string.Equals(value, filter.Trim(), StringComparison.OrdinalIgnoreCase);
     private static void AddExclusion(IDictionary<string, int> exclusions, string reason, int count) { if (count > 0) exclusions[reason] = exclusions.TryGetValue(reason, out var current) ? current + count : count; }
     private static decimal? Median(IEnumerable<decimal> values) { var ordered = values.Order().ToList(); return ordered.Count == 0 ? null : ordered.Count % 2 == 1 ? ordered[ordered.Count / 2] : (ordered[(ordered.Count / 2) - 1] + ordered[ordered.Count / 2]) / 2; }
+    private static List<string> GetWarnings(IReadOnlyCollection<NormalizedDealReport> positivePrices, IReadOnlyCollection<decimal> ratios)
+    {
+        var warnings = new List<string>();
+        if (positivePrices.Any(deal => deal.PriceNis < 100_000)) warnings.Add("low_price_reported");
+        if (positivePrices.Count < MinimumMetricContributorCount) warnings.Add("price_metric_has_fewer_than_five_contributors");
+        if (ratios.Count < MinimumMetricContributorCount) warnings.Add("price_per_sqm_metric_has_fewer_than_five_contributors");
+        if (positivePrices.Any(HasSuppliedPricePerSqmMismatch)) warnings.Add("supplied_price_per_sqm_mismatch");
+        return warnings;
+    }
+
     private static bool HasSuppliedPricePerSqmMismatch(NormalizedDealReport deal)
     {
         if (deal.PriceNis is not > 0 || deal.SizeSqm is not > 0 || !deal.SuppliedPricePerSqm.HasValue) return false;

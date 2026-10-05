@@ -55,3 +55,7 @@ Validation: Docker test target passed all 12 tests.
 ## Commit: docs: plan locality correction and verified LLM workflow
 
 The user requested architecture and plan coverage for locality typo handling, preservation of original and normalized values, and four separately configured LLM stages: query generation, query verification, result summarization and result verification against the original prompt. The documents now define conservative official-catalog matching, auditable locality metadata, verification gates, manual fallback, independent model configuration and new reviewable implementation steps. No runtime behavior changes in this commit.
+
+## Review correction: extract query warnings and name the contributor threshold
+
+The user requested that warning construction move out of `Query` and that the metric contributor threshold be configurable in code. `GetWarnings` now owns warning construction and `MinimumMetricContributorCount` replaces the literal `5`. Behavior is unchanged.
