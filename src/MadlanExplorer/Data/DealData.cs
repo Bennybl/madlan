@@ -15,11 +15,21 @@ public class NormalizedDealReport
 
     public string? Neighborhood { get; init; }
 
+    public string? Street { get; init; }
+
     public string PropertyType { get; init; } = string.Empty;
 
     public decimal? Rooms { get; init; }
 
     public decimal? SizeSqm { get; init; }
+
+    public decimal? Floor { get; init; }
+
+    public decimal? TotalFloors { get; init; }
+
+    public decimal? YearBuilt { get; init; }
+
+    public string? Condition { get; init; }
 
     public decimal? PriceNis { get; init; }
 
@@ -38,4 +48,6 @@ public class NormalizedDealReport
     public DateOnly? DealDateEnd { get; init; }
 
     public string DealDatePrecision { get; init; } = "unknown";
+
+    public string Source { get; init; } = string.Empty;
 }
