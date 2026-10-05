@@ -11,6 +11,8 @@ namespace MadlanExplorer;
 
 public class DatasetStore : IDisposable
 {
+    private const int EvidencePageSize = 100;
+    private const int MinimumMetricContributorCount = 5;
     private static readonly string[] ExpectedHeaders =
     [
         "deal_id", "city", "neighborhood", "street", "property_type", "rooms", "size_sqm",
@@ -106,8 +108,18 @@ public class DatasetStore : IDisposable
                 ConflictStatus TEXT NOT NULL CHECK (ConflictStatus IN ('usable', 'conflicting')),
                 CanonicalReportId INTEGER NULL REFERENCES Reports (Id),
                 ReportCount INTEGER NOT NULL,
-                DistinctReportCount INTEGER NOT NULL
+                DistinctReportCount INTEGER NOT NULL,
+                City TEXT NULL,
+                Neighborhood TEXT NULL,
+                PropertyType TEXT NULL,
+                Rooms REAL NULL,
+                SizeSqm REAL NULL,
+                PriceNis REAL NULL,
+                SuppliedPricePerSqm REAL NULL,
+                DealDateStart TEXT NULL,
+                DealDateEnd TEXT NULL
             );
+            CREATE INDEX IX_Deals_Filter ON Deals (ConflictStatus, City, Neighborhood, PropertyType, Rooms, DealDateStart, DealDateEnd);
             """;
         command.ExecuteNonQuery();
     }
@@ -242,8 +254,125 @@ public class DatasetStore : IDisposable
                 COUNT(DISTINCT NormalizedJson)
             FROM Reports
             GROUP BY DealId;
+
+            UPDATE Deals
+            SET
+                City = (SELECT json_extract(NormalizedJson, '$.City') FROM Reports WHERE Id = Deals.CanonicalReportId),
+                Neighborhood = (SELECT json_extract(NormalizedJson, '$.Neighborhood') FROM Reports WHERE Id = Deals.CanonicalReportId),
+                PropertyType = (SELECT json_extract(NormalizedJson, '$.PropertyType') FROM Reports WHERE Id = Deals.CanonicalReportId),
+                Rooms = (SELECT json_extract(NormalizedJson, '$.Rooms') FROM Reports WHERE Id = Deals.CanonicalReportId),
+                SizeSqm = (SELECT json_extract(NormalizedJson, '$.SizeSqm') FROM Reports WHERE Id = Deals.CanonicalReportId),
+                PriceNis = (SELECT json_extract(NormalizedJson, '$.PriceNis') FROM Reports WHERE Id = Deals.CanonicalReportId),
+                SuppliedPricePerSqm = (SELECT json_extract(NormalizedJson, '$.SuppliedPricePerSqm') FROM Reports WHERE Id = Deals.CanonicalReportId),
+                DealDateStart = (SELECT json_extract(NormalizedJson, '$.DealDateStart') FROM Reports WHERE Id = Deals.CanonicalReportId),
+                DealDateEnd = (SELECT json_extract(NormalizedJson, '$.DealDateEnd') FROM Reports WHERE Id = Deals.CanonicalReportId)
+            WHERE CanonicalReportId IS NOT NULL;
             """;
         command.ExecuteNonQuery();
+    }
+
+    public DealQueryResult ExecuteQuery(DealFilters filters)
+    {
+        ValidateFilters(filters);
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            WITH Filtered AS (
+                SELECT DealId, PriceNis, SizeSqm, SuppliedPricePerSqm
+                FROM Deals
+                WHERE ConflictStatus = 'usable'
+                  AND ($city IS NULL OR City = $city)
+                  AND ($neighborhood IS NULL OR Neighborhood = $neighborhood)
+                  AND ($propertyType IS NULL OR PropertyType = $propertyType)
+                  AND ($minimumRooms IS NULL OR Rooms >= $minimumRooms)
+                  AND ($maximumRooms IS NULL OR Rooms <= $maximumRooms)
+                  AND ($startDate IS NULL OR DealDateStart >= $startDate)
+                  AND ($endDate IS NULL OR DealDateEnd <= $endDate)
+            ),
+            Prices AS (SELECT PriceNis AS Value FROM Filtered WHERE PriceNis > 0),
+            RankedPrices AS (SELECT Value, ROW_NUMBER() OVER (ORDER BY Value) AS Position, COUNT(*) OVER () AS Total FROM Prices),
+            Ratios AS (SELECT PriceNis / SizeSqm AS Value FROM Filtered WHERE PriceNis > 0 AND SizeSqm > 0),
+            RankedRatios AS (SELECT Value, ROW_NUMBER() OVER (ORDER BY Value) AS Position, COUNT(*) OVER () AS Total FROM Ratios)
+            SELECT
+                (SELECT COUNT(*) FROM Filtered),
+                (SELECT AVG(Value) FROM RankedPrices WHERE Position IN ((Total + 1) / 2, (Total + 2) / 2)),
+                (SELECT AVG(Value) FROM RankedRatios WHERE Position IN ((Total + 1) / 2, (Total + 2) / 2)),
+                (SELECT COUNT(*) FROM Prices),
+                (SELECT COUNT(*) FROM Ratios),
+                EXISTS (SELECT 1 FROM Prices WHERE Value < 100000),
+                EXISTS (SELECT 1 FROM Filtered WHERE PriceNis > 0 AND SizeSqm > 0 AND SuppliedPricePerSqm IS NOT NULL AND ABS(SuppliedPricePerSqm - (PriceNis / SizeSqm)) > MAX(1, (PriceNis / SizeSqm) * 0.01));
+            """;
+        AddFilterParameters(command, filters);
+        using var reader = command.ExecuteReader();
+        reader.Read();
+        var transactionCount = reader.GetInt32(0);
+        var medianPriceNis = reader.IsDBNull(1) ? null : Convert.ToDecimal(reader.GetDouble(1));
+        var medianPricePerSqm = reader.IsDBNull(2) ? null : Convert.ToDecimal(reader.GetDouble(2));
+        var priceContributorCount = reader.GetInt32(3);
+        var pricePerSqmContributorCount = reader.GetInt32(4);
+        var warnings = new List<string>();
+        if (reader.GetInt64(5) == 1) warnings.Add("low_price_reported");
+        if (priceContributorCount < MinimumMetricContributorCount) warnings.Add("price_metric_has_fewer_than_five_contributors");
+        if (pricePerSqmContributorCount < MinimumMetricContributorCount) warnings.Add("price_per_sqm_metric_has_fewer_than_five_contributors");
+        if (reader.GetInt64(6) == 1) warnings.Add("supplied_price_per_sqm_mismatch");
+        reader.Dispose();
+        var evidence = ReadEvidence(connection, filters);
+        return new DealQueryResult
+        {
+            TransactionCount = transactionCount,
+            MedianPriceNis = medianPriceNis,
+            MedianPricePerSqm = medianPricePerSqm,
+            PriceContributorCount = priceContributorCount,
+            PricePerSqmContributorCount = pricePerSqmContributorCount,
+            ContributorDealIds = evidence.DealIds,
+            PriceContributorDealIds = evidence.DealIds,
+            PricePerSqmContributorDealIds = evidence.DealIds,
+            HasMoreEvidence = evidence.HasMore,
+            Warnings = warnings
+        };
+    }
+
+    private static (IReadOnlyList<string> DealIds, bool HasMore) ReadEvidence(SqliteConnection connection, DealFilters filters)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT DealId
+            FROM Deals
+            WHERE ConflictStatus = 'usable'
+              AND ($city IS NULL OR City = $city)
+              AND ($neighborhood IS NULL OR Neighborhood = $neighborhood)
+              AND ($propertyType IS NULL OR PropertyType = $propertyType)
+              AND ($minimumRooms IS NULL OR Rooms >= $minimumRooms)
+              AND ($maximumRooms IS NULL OR Rooms <= $maximumRooms)
+              AND ($startDate IS NULL OR DealDateStart >= $startDate)
+              AND ($endDate IS NULL OR DealDateEnd <= $endDate)
+            ORDER BY DealId
+            LIMIT $limit;
+            """;
+        AddFilterParameters(command, filters);
+        command.Parameters.AddWithValue("$limit", EvidencePageSize + 1);
+        using var reader = command.ExecuteReader();
+        var dealIds = new List<string>();
+        while (reader.Read()) dealIds.Add(reader.GetString(0));
+        var hasMore = dealIds.Count > EvidencePageSize;
+        return (dealIds.Take(EvidencePageSize).ToList(), hasMore);
+    }
+
+    private static void AddFilterParameters(SqliteCommand command, DealFilters filters)
+    {
+        command.Parameters.AddWithValue("$city", (object?)filters.City?.Trim() ?? DBNull.Value);
+        command.Parameters.AddWithValue("$neighborhood", (object?)filters.Neighborhood?.Trim() ?? DBNull.Value);
+        command.Parameters.AddWithValue("$propertyType", (object?)filters.PropertyType?.Trim() ?? DBNull.Value);
+        command.Parameters.AddWithValue("$minimumRooms", (object?)filters.MinimumRooms ?? DBNull.Value);
+        command.Parameters.AddWithValue("$maximumRooms", (object?)filters.MaximumRooms ?? DBNull.Value);
+        command.Parameters.AddWithValue("$startDate", filters.StartDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$endDate", filters.EndDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? (object)DBNull.Value);
+    }
+
+    private static void ValidateFilters(DealFilters filters)
+    {
+        if (filters.MinimumRooms is < 0 || filters.MaximumRooms is < 0 || filters.MinimumRooms > filters.MaximumRooms) throw new ArgumentException("Room bounds are invalid.", nameof(filters));
+        if (filters.StartDate > filters.EndDate) throw new ArgumentException("Date bounds are invalid.", nameof(filters));
     }
 
     private string NormalizeCity(string value)

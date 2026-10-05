@@ -41,3 +41,29 @@ The user requested removal of the manually maintained city-alias map. City norma
 Step 3 adds the `Deals` table in the same SQLite startup transaction that imports `Reports`. A deal is `usable` when all of its normalized reports are identical; duplicate source rows remain in `Reports` and the deal points to the earliest retained report. A deal is `conflicting` when its normalized reports differ, has no canonical report, and remains fully inspectable through its reports. The normalized data now includes all business fields used for equality, including the reported source.
 
 Tests confirm the sample's 520 deal groups, six duplicate pairs, four documented conflicts, retained canonical-report rules, and identical outcomes after reversing CSV row order.
+
+## Commit: feat: filter deals and calculate results
+
+Step 4 adds a read-only query service that loads only usable canonical reports from SQLite, validates filters, applies filtering and calculates exact-decimal medians in C#. The first query tests exposed a fixed-name shared-memory SQLite collision when separate web-application test fixtures ran concurrently. Test execution is now sequential so each fixture releases its keeper connection before the next fixture starts.
+
+## Review correction: separate step 4 DTO files
+
+The user requested one class or DTO per file. Moved DealFilters and DealQueryResult into their own matching files and removed an unused import. Query behavior is unchanged. The other step 4 test classes already have their own files.
+
+Validation: Docker test target passed all 12 tests.
+
+## Commit: docs: plan locality correction and verified LLM workflow
+
+The user requested architecture and plan coverage for locality typo handling, preservation of original and normalized values, and four separately configured LLM stages: query generation, query verification, result summarization and result verification against the original prompt. The documents now define conservative official-catalog matching, auditable locality metadata, verification gates, manual fallback, independent model configuration and new reviewable implementation steps. No runtime behavior changes in this commit.
+
+## Review correction: extract query warnings and name the contributor threshold
+
+The user requested that warning construction move out of `Query` and that the metric contributor threshold be configurable in code. `GetWarnings` now owns warning construction and `MinimumMetricContributorCount` replaces the literal `5`. Behavior is unchanged.
+
+## Review correction: production-scale database query path
+
+The user clarified that the application must be designed as a production service even though this demo uses in-memory SQLite. The architecture and implementation plan now require fixed, parameterized database SQL over typed indexed columns, database-side aggregates and bounded evidence pages. They explicitly prohibit a query service, repository or query builder. The existing C# materializing query implementation is being replaced before PR approval.
+
+## Review correction: execute queries in SQLite
+
+Removed `DealQueryService`. `DatasetStore` now loads typed, indexed deal columns and executes fixed parameterized SQLite statements for filters, medians, counts, warnings and a bounded evidence page. The same request shape can use PostgreSQL-specific statement text in a production deployment without adding a repository or query builder.
