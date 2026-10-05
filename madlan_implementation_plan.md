@@ -50,11 +50,11 @@ The application loads the supplied CSV into in-memory SQLite once at startup. Th
 
 ## 6. Introduce a provider-agnostic query service and repository
 
-**Change:** Add `QueryService` and `IDealRepository`. The service validates filters and creates a provider-neutral `DealQuery`; it has no SQL or provider types. Move SQLite query execution into `SqliteDealRepository`, including database-side filtering, conflict exclusion, medians, warnings and bounded evidence pagination. Define the PostgreSQL repository contract and provider-specific tests or fixtures, without requiring a PostgreSQL instance for the demo.
+**Change:** Add `QueryService` and `IDealRepository`. The service validates filters and creates a provider-neutral `DealQuery`; it has no SQL or provider types. Move SQLite query execution into `SqliteDealRepository`, including database-side filtering, conflict exclusion, medians, warnings and bounded evidence pagination. Do not implement PostgreSQL, add a PostgreSQL package, or add production-database configuration. Keep the contract, query/result DTOs and service semantics free of SQLite types so another repository implementation can be added later.
 
 **Verify:** Service tests use a fake repository and prove it sends the expected validated query. SQLite repository tests cover the Holon regression, empty results, partial-month exclusion, conflict exclusion, metric warnings and the evidence-page limit. Confirm request code does not materialize all matching rows.
 
-**Done when:** The service is independent of SQLite/PostgreSQL, and switching the registered repository changes storage implementation without changing filter semantics.
+**Done when:** The service is independent of the SQLite implementation, and a future repository can be added without changing filter semantics.
 
 ## 7. Expose the query and evidence APIs
 

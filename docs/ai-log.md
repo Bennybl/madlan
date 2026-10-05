@@ -72,4 +72,6 @@ The step 5 build exposed a compile error in the earlier SQL median mapping: the 
 
 ## Planning correction: provider-agnostic query repository
 
-The user clarified that query semantics belong in a provider-agnostic service and database translation belongs in a repository implementation. The architecture now defines `QueryService`, `IDealRepository`, `SqliteDealRepository` for the demo, and `PostgresDealRepository` for production. The plan adds a dedicated step 6 to introduce and test this boundary, then shifts later API, LLM, UI and deployment steps by one.
+The user clarified that query semantics belong in a provider-agnostic service and database translation belongs in a repository implementation. The architecture now defines `QueryService`, `IDealRepository`, `SqliteDealRepository` for the demo, and a future adapter path for production. The plan adds a dedicated step 6 to introduce and test this boundary, then shifts later API, LLM, UI and deployment steps by one.
+
+The user then clarified that PostgreSQL must not be implemented in this project. The architecture and step 6 now limit implementation to SQLite while preserving a provider-neutral repository contract for a future adapter.
