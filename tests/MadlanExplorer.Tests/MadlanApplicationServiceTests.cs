@@ -193,6 +193,79 @@ public class MadlanApplicationServiceTests
         await Assert.ThrowsAsync<OperationCanceledException>(() => service.AskAsync("test", cts.Token));
     }
 
+    [Fact]
+    public void Query_returns_the_calculated_result_and_dataset_hash_without_calling_the_llm()
+    {
+        var provider = new FakeLlmProvider();
+        var repository = new FakeDealRepository { Result = new DealQueryResult { TransactionCount = 3 } };
+        var metadataProvider = new FakeDatasetMetadataProvider { Metadata = new DatasetMetadata { FileHash = "hash-manual" } };
+        var service = CreateService(provider, repository, metadataProvider);
+        var filters = new DealFilters { City = "חולון" };
+
+        var response = service.Query(filters);
+
+        Assert.Same(filters, response.Filters);
+        Assert.Equal(3, response.Result.TransactionCount);
+        Assert.Equal("hash-manual", response.DatasetHash);
+        Assert.Empty(provider.Requests);
+    }
+
+    [Fact]
+    public void Query_propagates_invalid_filter_bounds()
+    {
+        var service = CreateService(new FakeLlmProvider(), new FakeDealRepository());
+
+        Assert.Throws<ArgumentException>(() => service.Query(new DealFilters { MinimumRooms = 5, MaximumRooms = 4 }));
+    }
+
+    [Fact]
+    public void GetDatasetSummary_combines_repository_facts_and_dataset_metadata()
+    {
+        var repository = new FakeDealRepository
+        {
+            Facts = new DatasetFacts
+            {
+                DealCount = 520,
+                UsableDealCount = 516,
+                ConflictingDealCount = 4,
+                Cities = ["חולון"],
+                Neighborhoods = ["מרכז"],
+                PropertyTypes = ["דירה"]
+            }
+        };
+        var metadataProvider = new FakeDatasetMetadataProvider { Metadata = new DatasetMetadata { FileHash = "hash-1", ReportCount = 530 } };
+        var service = CreateService(new FakeLlmProvider(), repository, metadataProvider);
+
+        var summary = service.GetDatasetSummary();
+
+        Assert.Equal("hash-1", summary.DatasetHash);
+        Assert.Equal(530, summary.ReportCount);
+        Assert.Equal(520, summary.DealCount);
+        Assert.Equal(516, summary.UsableDealCount);
+        Assert.Equal(4, summary.ConflictingDealCount);
+        Assert.Equal(["חולון"], summary.Cities);
+    }
+
+    [Fact]
+    public void GetDeal_returns_the_detail_the_repository_has_for_a_known_deal()
+    {
+        var detail = new DealDetail { DealId = "D100027", ConflictStatus = "usable" };
+        var repository = new FakeDealRepository { Deal = detail };
+        var service = CreateService(new FakeLlmProvider(), repository);
+
+        var result = service.GetDeal("D100027");
+
+        Assert.Same(detail, result);
+    }
+
+    [Fact]
+    public void GetDeal_returns_null_for_an_unknown_deal()
+    {
+        var service = CreateService(new FakeLlmProvider(), new FakeDealRepository());
+
+        Assert.Null(service.GetDeal("unknown"));
+    }
+
     private static MadlanApplicationService CreateService(
         FakeLlmProvider provider,
         FakeDealRepository repository,
@@ -223,6 +296,7 @@ public class MadlanApplicationServiceTests
             queryService,
             summaryService,
             resultVerificationService,
+            repository,
             metadataProvider ?? new FakeDatasetMetadataProvider(),
             options,
             messages);

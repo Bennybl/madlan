@@ -9,6 +9,7 @@ public class MadlanApplicationService
     private readonly QueryService _queryService;
     private readonly ResultSummaryService _resultSummaryService;
     private readonly ResultVerificationService _resultVerificationService;
+    private readonly IDealRepository _dealRepository;
     private readonly IDatasetMetadataProvider _datasetMetadataProvider;
     private readonly LlmOptions _options;
     private readonly MessagesOptions _messages;
@@ -19,6 +20,7 @@ public class MadlanApplicationService
         QueryService queryService,
         ResultSummaryService resultSummaryService,
         ResultVerificationService resultVerificationService,
+        IDealRepository dealRepository,
         IDatasetMetadataProvider datasetMetadataProvider,
         IOptions<LlmOptions> options,
         IOptions<MessagesOptions> messages)
@@ -28,9 +30,43 @@ public class MadlanApplicationService
         _queryService = queryService;
         _resultSummaryService = resultSummaryService;
         _resultVerificationService = resultVerificationService;
+        _dealRepository = dealRepository;
         _datasetMetadataProvider = datasetMetadataProvider;
         _options = options.Value;
         _messages = messages.Value;
+    }
+
+    public ManualQueryResponse Query(DealFilters filters)
+    {
+        var result = _queryService.Query(filters);
+        return new ManualQueryResponse
+        {
+            Filters = filters,
+            Result = result,
+            DatasetHash = _datasetMetadataProvider.Metadata.FileHash
+        };
+    }
+
+    public DatasetSummaryResponse GetDatasetSummary()
+    {
+        var facts = _dealRepository.GetDatasetFacts();
+        var metadata = _datasetMetadataProvider.Metadata;
+        return new DatasetSummaryResponse
+        {
+            DatasetHash = metadata.FileHash,
+            ReportCount = metadata.ReportCount,
+            DealCount = facts.DealCount,
+            UsableDealCount = facts.UsableDealCount,
+            ConflictingDealCount = facts.ConflictingDealCount,
+            Cities = facts.Cities,
+            Neighborhoods = facts.Neighborhoods,
+            PropertyTypes = facts.PropertyTypes
+        };
+    }
+
+    public DealDetail? GetDeal(string dealId)
+    {
+        return _dealRepository.GetDeal(dealId);
     }
 
     public async Task<AskResponse> AskAsync(string prompt, CancellationToken cancellationToken)

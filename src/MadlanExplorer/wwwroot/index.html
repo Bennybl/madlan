@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>סוכן נדל"ן מדלן — חוקר עסקאות</title>
+  <link rel="stylesheet" href="css/site.css" />
+</head>
+<body>
+  <header class="page-header">
+    <h1>חוקר עסקאות נדל"ן — מדלן</h1>
+    <p class="subtitle">סינון ידני של מדגם העסקאות, עם הצג מלא של החשבון והראיות שמאחורי כל מספר.</p>
+  </header>
+
+  <main>
+    <section class="panel" aria-labelledby="coverage-heading">
+      <h2 id="coverage-heading">כיסוי המדגם</h2>
+      <div id="coverage-status" role="status" aria-live="polite">טוען נתוני כיסוי…</div>
+      <dl id="coverage-list" class="coverage-grid" hidden></dl>
+    </section>
+
+    <section class="panel" aria-labelledby="filters-heading">
+      <h2 id="filters-heading">סינון ידני</h2>
+      <p class="hint">הסינון הידני עובד תמיד, גם אם מנוע השאלות החכם אינו זמין.</p>
+      <form id="filters-form">
+        <div class="field-grid">
+          <div class="field">
+            <label for="filter-city">עיר</label>
+            <input type="text" id="filter-city" name="city" list="city-options" autocomplete="off" />
+            <datalist id="city-options"></datalist>
+          </div>
+          <div class="field">
+            <label for="filter-neighborhood">שכונה</label>
+            <input type="text" id="filter-neighborhood" name="neighborhood" list="neighborhood-options" autocomplete="off" />
+            <datalist id="neighborhood-options"></datalist>
+          </div>
+          <div class="field">
+            <label for="filter-property-type">סוג נכס</label>
+            <input type="text" id="filter-property-type" name="propertyType" list="property-type-options" autocomplete="off" />
+            <datalist id="property-type-options"></datalist>
+          </div>
+          <div class="field">
+            <label for="filter-min-rooms">חדרים מינימום</label>
+            <input type="number" id="filter-min-rooms" name="minimumRooms" min="0" step="0.5" />
+          </div>
+          <div class="field">
+            <label for="filter-max-rooms">חדרים מקסימום</label>
+            <input type="number" id="filter-max-rooms" name="maximumRooms" min="0" step="0.5" />
+          </div>
+          <div class="field">
+            <label for="filter-start-date">מתאריך</label>
+            <input type="date" id="filter-start-date" name="startDate" />
+          </div>
+          <div class="field">
+            <label for="filter-end-date">עד תאריך</label>
+            <input type="date" id="filter-end-date" name="endDate" />
+          </div>
+        </div>
+        <div class="actions">
+          <button type="submit">חפש</button>
+          <button type="button" id="clear-filters">נקה סינון</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel" aria-labelledby="lookup-heading">
+      <h2 id="lookup-heading">בדיקת עסקה לפי מזהה</h2>
+      <p class="hint">שימושי כשלקוח מציין מספר עסקה ספציפי, כולל עסקאות עם דיווחים סותרים שאינן מופיעות בתוצאות הסינון.</p>
+      <form id="deal-lookup-form">
+        <div class="field">
+          <label for="deal-lookup-id">מזהה עסקה</label>
+          <input type="text" id="deal-lookup-id" name="dealId" autocomplete="off" />
+        </div>
+        <div class="actions">
+          <button type="submit">בדוק עסקה</button>
+        </div>
+      </form>
+      <div id="deal-lookup-status" role="status" aria-live="polite"></div>
+      <div id="deal-lookup-result"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="results-heading">
+      <h2 id="results-heading">תוצאות</h2>
+      <div id="results-status" role="status" aria-live="polite">בחרו סינון ולחצו "חפש" כדי לראות תוצאות.</div>
+
+      <div id="results-content" hidden>
+        <div class="metric-grid">
+          <article class="metric-card">
+            <h3>מספר עסקאות</h3>
+            <p class="metric-value" id="metric-transaction-count">—</p>
+          </article>
+          <article class="metric-card">
+            <h3>מחיר חציוני (₪)</h3>
+            <p class="metric-value" id="metric-median-price">—</p>
+            <p class="metric-count" id="metric-price-contributors"></p>
+          </article>
+          <article class="metric-card">
+            <h3>מחיר למ"ר חציוני (₪)</h3>
+            <p class="metric-value" id="metric-median-price-per-sqm">—</p>
+            <p class="metric-count" id="metric-price-per-sqm-contributors"></p>
+          </article>
+        </div>
+
+        <div id="warnings-panel" hidden>
+          <h3>אזהרות</h3>
+          <ul id="warnings-list"></ul>
+        </div>
+
+        <div id="evidence-panel">
+          <h3>עסקאות תומכות</h3>
+          <p id="evidence-more-notice" hidden></p>
+          <table id="evidence-table">
+            <caption class="visually-hidden">רשימת מזהי העסקאות שתומכות בתוצאה המחושבת</caption>
+            <thead>
+              <tr>
+                <th scope="col">מזהה עסקה</th>
+                <th scope="col">פירוט</th>
+              </tr>
+            </thead>
+            <tbody id="evidence-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="definitions-heading">
+      <h2 id="definitions-heading">איך מחושבים המספרים</h2>
+      <ul class="definitions-list">
+        <li>מחיר חציוני ומחיר למ"ר חציוני מחושבים רק מעסקאות עם מחיר חיובי; עסקה בלי שטח לא נכללת בחישוב המחיר למ"ר.</li>
+        <li>עסקאות עם דיווחים סותרים (יותר מגרסה מנורמלת אחת לאותו מזהה עסקה) לא נכללות בחישוב, אך ניתן לבדוק אותן דרך פירוט העסקה.</li>
+        <li>תאריך שדווח רק לפי חודש נכלל בטווח תאריכים רק אם כל החודש נמצא בטווח המבוקש.</li>
+        <li>כל חישוב מוצג עם מספר התורמים שלו ועם רשימת מזהי העסקאות שתומכות בו, כדי שניתן יהיה לבדוק כל מספר.</li>
+        <li>התוצאות משקפות רק את מדגם הנתונים שסופק, ואינן מהוות הערכה של כל שוק הנדל"ן.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="page-footer">
+    <p id="dataset-footer-note"></p>
+  </footer>
+
+  <template id="report-detail-template">
+    <div class="report-detail">
+      <dl></dl>
+    </div>
+  </template>
+
+  <script src="js/site.js"></script>
+</body>
+</html>
