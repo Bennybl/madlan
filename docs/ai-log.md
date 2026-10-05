@@ -75,3 +75,9 @@ The step 5 build exposed a compile error in the earlier SQL median mapping: the 
 The user clarified that query semantics belong in a provider-agnostic service and database translation belongs in a repository implementation. The architecture now defines `QueryService`, `IDealRepository`, `SqliteDealRepository` for the demo, and a future adapter path for production. The plan adds a dedicated step 6 to introduce and test this boundary, then shifts later API, LLM, UI and deployment steps by one.
 
 The user then clarified that PostgreSQL must not be implemented in this project. The architecture and step 6 now limit implementation to SQLite while preserving a provider-neutral repository contract for a future adapter.
+
+## Commit: feat: isolate query execution behind repository
+
+Implemented step 6. `QueryService` validates application filters and produces a provider-neutral `DealQuery`; `IDealRepository` defines execution; and `SqliteDealRepository` owns the parameterized SQLite statements, database-side aggregates and bounded evidence read. `DatasetStore` now has only dataset lifecycle and loading responsibilities. Dependency injection selects the SQLite implementation for this demo, and a fake repository verifies the service boundary without SQLite.
+
+The integration tests now resolve `QueryService` through dependency injection and retain coverage for filtering, null metrics and invalid filters. A new test verifies that a broad query returns at most the default 100 evidence IDs while reporting that more matching evidence exists. Docker's .NET 10 test target passed all 16 tests.

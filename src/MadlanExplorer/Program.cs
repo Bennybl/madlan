@@ -18,6 +18,8 @@ public static class Application
         builder.Services.Configure<DatasetOptions>(builder.Configuration.GetSection(DatasetOptions.SectionName));
         builder.Services.AddSingleton<IsraeliLocalityCatalog>();
         builder.Services.AddSingleton<DatasetStore>();
+        builder.Services.AddSingleton<IDealRepository, SqliteDealRepository>();
+        builder.Services.AddSingleton<QueryService>();
 
         var app = builder.Build();
         var localityCatalog = app.Services.GetRequiredService<IsraeliLocalityCatalog>();
