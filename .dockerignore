@@ -4,3 +4,6 @@ obj
 TestResults
 .vs
 .idea
+src/MadlanExplorer/client/node_modules
+src/MadlanExplorer/client/dist
+src/MadlanExplorer/wwwroot

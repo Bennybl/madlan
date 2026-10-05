@@ -12,7 +12,9 @@ Scope: explore the supplied dataset and explain its numbers. Load it into in-mem
 
 ## 2. Simple application structure
 
-Use one C# ASP.NET Core application serving plain HTML/CSS/JavaScript from `wwwroot`, plus one xUnit test project. Use .NET 10, CsvHelper and Microsoft.Data.Sqlite, with direct SQL and no ORM. Build with Docker when the local SDK is unavailable; the inspected machine has .NET 8 only.
+Use one C# ASP.NET Core application serving a compiled UI from `wwwroot`, plus one xUnit test project. Use .NET 10, CsvHelper and Microsoft.Data.Sqlite, with direct SQL and no ORM. Build with Docker when the local SDK is unavailable; the inspected machine has .NET 8 only.
+
+The UI started as plain HTML/CSS/JavaScript in steps 12-13 and was rebuilt as a React app (Vite, under `src/MadlanExplorer/client`) once the chat-style question experience needed richer client-side state (message history, a thinking indicator, per-message result rendering) than hand-rolled DOM manipulation could keep maintainable. `npm run build` compiles it into `wwwroot`, which is generated and gitignored, not committed. The Docker build adds a `node:20-alpine` stage that runs this build and copies its output into the `wwwroot` used by `dotnet publish`, so the published image is unchanged: one self-contained ASP.NET Core container serving a static UI and the `/api/*`/`/healthz` endpoints, no Node runtime needed after the image is built.
 
 Keep three application components:
 
@@ -95,7 +97,7 @@ Keep credentials on the server. Validate request fields and render untrusted tex
 
 One RTL page contains a question input, examples, editable filters, three metric cards, a supporting-record table and expandable record details. Show sample sizes, warnings, data coverage and calculation definitions. Show the verified Hebrew summary above its evidence, and show original/normalized locality values and correction status in report details. Display progress through interpretation, verification and summary stages. Show empty/error states explicitly; a failed new question must not make old results look current. Ignore stale responses from earlier requests.
 
-Step 12 delivers the manual half of this page as plain HTML/CSS/JavaScript served from `wwwroot`: dataset coverage, editable filters, the three metric cards, warnings, a supporting-evidence table with expandable per-deal report detail (raw and normalized fields, locality correction metadata), a direct deal-ID lookup for inspecting a specific disputed or conflicting deal, and calculation-definition text. The natural-language question input, progress through the four LLM stages and the verified summary display are step 13's addition on top of this page, not a separate page.
+Step 12 delivers the manual half of this page: dataset coverage, editable filters, the three metric cards, warnings, a supporting-evidence table with expandable per-deal report detail (raw and normalized fields, locality correction metadata), a direct deal-ID lookup for inspecting a specific disputed or conflicting deal, and calculation-definition text. Step 13 adds the natural-language question input, progress through the four LLM stages and the verified summary display on top of this same page. Both were originally plain HTML/CSS/JavaScript and were rebuilt as a React chat UI afterward (see section 2) once the question flow needed a message history, a thinking indicator, and automatic full-detail display for single-deal answers (the specific record behind a cheapest/most-expensive-style question) — state that outgrew hand-rolled DOM updates.
 
 Deploy one Docker container to Render with the CSV included and the API key configured as a secret. No persistent disk is needed. Verify the actual hosting configuration and any charge before provisioning. Restarting recreates and reloads the in-memory SQLite database from the bundled CSV.
 
