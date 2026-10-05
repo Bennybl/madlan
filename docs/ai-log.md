@@ -103,3 +103,9 @@ The user clarified that the API must use one controller that delegates to an app
 The user clarified that the public controller must expose only the natural-language product entry point. Replaced the dataset, manual-query and deal-detail routes with `POST /api/ask`. It preserves the original prompt and delegates it to `MadlanApplicationService`; the next approved step adds the provider-neutral Grok workflow behind this application-service method.
 
 The first compile after removing the internal response contracts found the now-unused `DatasetService` still depended on one of them. Removing that obsolete service and its registration fixed the build; the repository remains available for the application service when the LLM workflow is added.
+
+## Commit: feat: add Grok query generation workflow
+
+Added a provider-neutral LLM contract, stage/model configuration and a Grok HTTP adapter. Query generation is orchestrated by `MadlanApplicationService`, preserves the original prompt, accepts only structured query/clarification/unsupported outcomes, and validates generated filters in C# before returning them.
+
+Fake-provider tests verify model selection, prompt preservation, structured query filters and malformed output rejection. The Docker .NET 10 test suite passed all 18 tests.

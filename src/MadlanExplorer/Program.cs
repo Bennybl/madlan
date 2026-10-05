@@ -17,10 +17,13 @@ public static class Application
         var builder = WebApplication.CreateBuilder(args);
         builder.Services.AddControllers();
         builder.Services.Configure<DatasetOptions>(builder.Configuration.GetSection(DatasetOptions.SectionName));
+        builder.Services.Configure<LlmOptions>(builder.Configuration.GetSection(LlmOptions.SectionName));
         builder.Services.AddSingleton<IsraeliLocalityCatalog>();
         builder.Services.AddSingleton<DatasetStore>();
         builder.Services.AddSingleton<IDealRepository, SqliteDealRepository>();
         builder.Services.AddSingleton<QueryService>();
+        builder.Services.AddHttpClient<ILlmProvider, GrokLlmProvider>();
+        builder.Services.AddSingleton<QueryGenerationService>();
         builder.Services.AddSingleton<MadlanApplicationService>();
 
         var app = builder.Build();

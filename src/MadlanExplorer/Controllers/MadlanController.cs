@@ -16,11 +16,11 @@ public class MadlanController : ControllerBase
     }
 
     [HttpPost("ask")]
-    public ActionResult<AskResponse> Ask([FromBody] AskRequest? request)
+    public async Task<ActionResult<AskResponse>> Ask([FromBody] AskRequest? request, CancellationToken cancellationToken)
     {
         try
         {
-            var response = _applicationService.Ask(request?.Prompt ?? string.Empty);
+            var response = await _applicationService.AskAsync(request?.Prompt ?? string.Empty, cancellationToken);
             _logger.LogInformation(
                 "Received property question {RequestId}",
                 HttpContext.TraceIdentifier);

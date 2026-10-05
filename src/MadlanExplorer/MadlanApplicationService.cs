@@ -2,17 +2,10 @@ namespace MadlanExplorer;
 
 public class MadlanApplicationService
 {
-    public AskResponse Ask(string prompt)
+    private readonly QueryGenerationService _queryGenerationService;
+    public MadlanApplicationService(QueryGenerationService queryGenerationService) { _queryGenerationService = queryGenerationService; }
+    public Task<AskResponse> AskAsync(string prompt, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(prompt))
-        {
-            throw new ArgumentException("A prompt is required.", nameof(prompt));
-        }
-
-        return new AskResponse
-        {
-            Prompt = prompt,
-            Status = "received"
-        };
+        return _queryGenerationService.GenerateAsync(prompt, cancellationToken);
     }
 }
