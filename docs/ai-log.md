@@ -113,3 +113,11 @@ Fake-provider tests verify model selection, prompt preservation, structured quer
 ## Review correction: strengthen step 8 acceptance criteria
 
 Reviewing the Grok query-generation work against the challenge found missing structured-output guards, incomplete prompt context, inactive provider selection, insufficient graceful-failure behavior and missing HTTP fake-provider tests. The step 8 plan now makes these explicit implementation and verification requirements before approval.
+
+## Commit: feat: verify generated queries against the original prompt
+
+Implemented step 9. Added `QueryVerificationService`, using the separately configured `Llm.Models.QueryVerification` model, which checks the original prompt against the filters `QueryGenerationService` proposed and returns an approved/rejected/clarification outcome with a reason. `MadlanApplicationService` now only returns generated filters to the caller after verification approves them; a rejected or ambiguous verification is surfaced as a clarification response with no filters, and a malformed or unavailable verifier throws, so it is never treated as approval. No automatic retry or repair loop was added, matching the architecture.
+
+Fake-provider tests cover approval, rejection, clarification, malformed verifier output, an unsupported outcome value and a missing verification-model configuration. Orchestration tests on `MadlanApplicationService` confirm the verification model is actually called with the generated filters, that a rejected or ambiguous verification strips filters from the response, and that generation outcomes which never produce filters (clarification, unsupported) skip the verification call entirely. The Docker .NET 10 test suite passed all 30 tests.
+
+A broader pre-existing gap surfaced during this review: the step 8 query-generation prompt still does not supply the filter schema, room semantics, date behavior or current Israel date that the architecture calls for, and `/api/ask` still has no HTTP-level test coverage with a fake provider. Both are out of step 9's scope and are left for a dedicated follow-up rather than folded into this change.

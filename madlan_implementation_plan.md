@@ -1,6 +1,6 @@
 # Madlan Deal Explorer - Implementation Plan
 
-Status: revised on 2026-10-05. Steps 1-4 are merged; step 5 is under review. Steps 6-15 below are planned, not implemented.
+Status: revised on 2026-10-05. Steps 1-8 are merged; step 9 is under review. Steps 10-15 below are planned, not implemented.
 
 Follow the [architecture](madlan_architecture.md). The [challenge](madlan_rnd_ops_engineer_challenge.md) and [CSV](madlan_deals_sample.csv) are the sources of truth.
 
