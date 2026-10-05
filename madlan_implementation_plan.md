@@ -1,10 +1,10 @@
 # Madlan Deal Explorer - Implementation Plan
 
-Status: revised on 2026-10-05. Steps 1-3 are merged; step 4 is under review. New steps 5-10 below are planned, not implemented.
+Status: revised on 2026-10-05. Steps 1-4 are merged; step 5 is under review. Steps 6-15 below are planned, not implemented.
 
 Follow the [architecture](madlan_architecture.md). The [challenge](madlan_rnd_ops_engineer_challenge.md) and [CSV](madlan_deals_sample.csv) are the sources of truth.
 
-Implement each numbered step as a small reviewable change with its relevant checks. Steps 1-10 build the backend, 11-12 the UI, and 13-14 deployment and handoff. Existing steps 1-4 retain their numbers. One application project and one test project are sufficient.
+Implement each numbered step as a small reviewable change with its relevant checks. Steps 1-11 build the backend, 12-13 the UI, and 14-15 deployment and handoff. Existing steps 1-5 retain their numbers. One application project and one test project are sufficient.
 
 The application loads the supplied CSV into in-memory SQLite once at startup. There is no data-upload feature, admin access, persistent storage, rate limiting or usage-quota infrastructure.
 
@@ -30,15 +30,15 @@ The application loads the supplied CSV into in-memory SQLite once at startup. Th
 
 **Verify:** Confirm 520 deal groups, six duplicate pairs and the four documented conflicting IDs. Reversing row order must not change the outcome.
 
-**Done when:** SQLite contains 530 reports and 520 deal groups, and the query service can distinguish usable deals from conflicts without losing evidence.
+**Done when:** SQLite contains 530 reports and 520 deal groups, and later query code can distinguish usable deals from conflicts without losing evidence.
 
 ## 4. Implement filters and calculated results
 
-**Change:** Add typed query columns and indexes to the demo SQLite schema. Execute fixed, parameterized SQL directly from the request path: filtering, conflict exclusion, counts, medians, warnings and evidence pagination stay in the database. Add shared filter validation. Return transaction count, median price, median per-deal price/m², metric sample sizes, a bounded evidence page/cursor and exclusion reasons. Implement date containment, missing-value eligibility and the architecture's warning/rounding rules. Do not add a query service, repository or query builder. Keep SQLite statement text separate from the planned PostgreSQL production statements where dialects differ.
+**Change:** Add typed query columns and indexes to the demo SQLite schema. Define the provider-neutral query/result DTOs and validation rules used by the later query service. Implement date containment, missing-value eligibility and the architecture's warning/rounding rules. Database execution moves to the repository in step 6.
 
 **Verify:** Hand-check odd/even medians, empty results, missing area, zero price, low-price warning and partial-month overlap. Regression: Holon/apartment/exactly four rooms/2025 returns D100027 only, with NIS 3,826,000 and NIS 38,260/m².
 
-**Done when:** Every metric is reproducible from its paginated evidence and SQL statement, independent of the LLM; request memory does not grow with matched-row count.
+**Done when:** Query semantics are reproducible from their DTOs and ready for a repository implementation, independent of the LLM.
 
 ## 5. Resolve locality typos and preserve normalization evidence
 
@@ -48,7 +48,15 @@ The application loads the supplied CSV into in-memory SQLite once at startup. Th
 
 **Done when:** Clear typos resolve deterministically and every correction can be inspected; uncertain names are never silently changed.
 
-## 6. Expose the query and evidence APIs
+## 6. Introduce a provider-agnostic query service and repository
+
+**Change:** Add `QueryService` and `IDealRepository`. The service validates filters and creates a provider-neutral `DealQuery`; it has no SQL or provider types. Move SQLite query execution into `SqliteDealRepository`, including database-side filtering, conflict exclusion, medians, warnings and bounded evidence pagination. Do not implement PostgreSQL, add a PostgreSQL package, or add production-database configuration. Keep the contract, query/result DTOs and service semantics free of SQLite types so another repository implementation can be added later.
+
+**Verify:** Service tests use a fake repository and prove it sends the expected validated query. SQLite repository tests cover the Holon regression, empty results, partial-month exclusion, conflict exclusion, metric warnings and the evidence-page limit. Confirm request code does not materialize all matching rows.
+
+**Done when:** The service is independent of the SQLite implementation, and a future repository can be added without changing filter semantics.
+
+## 7. Expose the query and evidence APIs
 
 **Change:** Add dataset, query and deal-detail endpoints. Include applied filters, dataset hash, warnings and supporting reports. Add consistent Hebrew errors, request IDs and simple structured logs. Health succeeds only after data loading. Keep all data read-only.
 
@@ -56,7 +64,7 @@ The application loads the supplied CSV into in-memory SQLite once at startup. Th
 
 **Done when:** Manual filtering and number investigation work through HTTP without model access.
 
-## 7. Generate structured queries with an LLM
+## 8. Generate structured queries with an LLM
 
 **Change:** Add a small provider interface and query-generation stage. Configure separate model IDs for query generation, query verification, result summary and result verification. Generate typed filters, clarification or unsupported results; validate with the same C# rules as manual filters. Retain the unchanged original prompt. Add stage timeouts, cancellation and structured output validation.
 
@@ -64,7 +72,7 @@ The application loads the supplied CSV into in-memory SQLite once at startup. Th
 
 **Done when:** Proposed filters are validated and testable independently; generation alone does not authorize automatic execution.
 
-## 8. Verify generated queries against the original prompt
+## 9. Verify generated queries against the original prompt
 
 **Change:** Add query verification using its separately configured model. Supply the original prompt, proposed filters and supported semantics. Accept only structured approval; rejection or ambiguity returns reasons/clarification. Expose the interpretation endpoint after this check. No automatic retries or repair loop.
 
@@ -72,15 +80,15 @@ The application loads the supplied CSV into in-memory SQLite once at startup. Th
 
 **Done when:** Automatic query execution requires C# validation and model verification; manual queries remain available.
 
-## 9. Summarize calculated results with an LLM
+## 10. Summarize calculated results with an LLM
 
-**Change:** Add a summary stage using its separately configured model and the original prompt, approved filters, dataset hash, deterministic metrics, contributor IDs, exclusions and warnings. Require evidence references. Keep calculated values unchanged; summary output remains a candidate until step 10 verification.
+**Change:** Add a summary stage using its separately configured model and the original prompt, approved filters, dataset hash, deterministic metrics, contributor IDs, exclusions and warnings. Require evidence references. Keep calculated values unchanged; summary output remains a candidate until step 11 verification.
 
 **Verify:** Cover empty results, small samples, missing area, conflicts, low-price warnings and provider failure. Verify the summarization model receives the exact calculation evidence and no candidate prose is presented as verified.
 
 **Done when:** Evidence-based Hebrew summaries can be generated without changing calculations.
 
-## 10. Verify results against the original prompt
+## 11. Verify results against the original prompt
 
 **Change:** Add the result-verification model and `/api/ask` orchestration. Check the candidate summary against the original prompt, approved filters and calculated evidence. Validate referenced IDs and numeric claims in C# where structured claims allow it. Publish prose only after approval; on failure show deterministic results with summary unavailable. Bind verification to the exact prompt, filters and dataset hash. Use configurable 15-second stage, 65-second server and 70-second browser deadlines; propagate cancellation.
 
@@ -88,7 +96,7 @@ The application loads the supplied CSV into in-memory SQLite once at startup. Th
 
 **Done when:** The four-stage question workflow returns verified prose with reproducible evidence, or a clear partial/failure response without unverified prose.
 
-## 11. Build the RTL manual explorer and evidence view
+## 12. Build the RTL manual explorer and evidence view
 
 **Change:** Serve plain HTML/CSS/JavaScript with Hebrew labels and RTL direction. Add manual filters, three metrics, contributor counts, warnings, evidence table and expandable original/normalized report details including locality correction metadata. Show coverage and calculation definitions. Add loading, empty and error states; use safe text rendering and accessible labels.
 
@@ -96,7 +104,7 @@ The application loads the supplied CSV into in-memory SQLite once at startup. Th
 
 **Done when:** A CSM can filter, understand a number and inspect its evidence without developer tools.
 
-## 12. Connect natural-language questions to the UI
+## 13. Connect natural-language questions to the UI
 
 **Change:** Add question input and example questions. Connect to the four-stage question workflow and display verified filters, deterministic results and verified summaries with evidence. Show progress and clarification/failure states. Editing filters invalidates the prior summary and verification and runs an explicitly manual query. Clarification and unsupported responses explain what to change. Use the configurable 70-second browser deadline and ignore older responses after a new request. Clearly label old results after a failed search.
 
@@ -104,7 +112,7 @@ The application loads the supplied CSV into in-memory SQLite once at startup. Th
 
 **Done when:** The complete question-to-evidence journey works and has an obvious manual fallback.
 
-## 13. Deploy the application
+## 14. Deploy the application
 
 **Change:** Package the app and CSV in one Docker image and deploy to Render. Configure the API key as a server secret, the four independent model IDs, workflow deadlines and the health endpoint. Recreate in-memory SQLite on startup; no persistent disk or database service is needed. Add a small CI build/test workflow and document startup/deployment commands. Confirm any actual hosting charge before provisioning.
 
@@ -112,7 +120,7 @@ The application loads the supplied CSV into in-memory SQLite once at startup. Th
 
 **Done when:** The application works at a public URL and can be rebuilt from the repository.
 
-## 14. Complete the handoff
+## 15. Complete the handoff
 
 **Change:** Write the one-page Hebrew CSM guide: what the app does, its limitations, how to inspect a disputed number and a reply the CSM can send. Finish the English README with calculation assumptions, URL, setup and actual effort. Finish the honest AI log with a real caught mistake and correction. Link the guide in the UI.
 
