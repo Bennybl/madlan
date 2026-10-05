@@ -205,11 +205,14 @@ public class DatasetStore : IDisposable
     {
         var flags = new List<string>();
         var dealDate = NormalizeDate(fields["deal_date"], flags);
+        var locality = _localityCatalog.Resolve(NormalizeText(fields["city"]));
+        if (locality.Method is "typo" or "ambiguous" or "unresolved") flags.Add($"city_{locality.Method}");
 
         var normalized = new NormalizedDealReport
         {
             DealId = NormalizeText(fields["deal_id"]),
-            City = NormalizeCity(fields["city"]),
+            City = locality.ResolvedValue,
+            Locality = locality,
             Neighborhood = NormalizeNullableText(fields["neighborhood"]),
             Street = NormalizeNullableText(fields["street"]),
             PropertyType = NormalizeText(fields["property_type"]),
@@ -306,8 +309,8 @@ public class DatasetStore : IDisposable
         using var reader = command.ExecuteReader();
         reader.Read();
         var transactionCount = reader.GetInt32(0);
-        var medianPriceNis = reader.IsDBNull(1) ? null : Convert.ToDecimal(reader.GetDouble(1));
-        var medianPricePerSqm = reader.IsDBNull(2) ? null : Convert.ToDecimal(reader.GetDouble(2));
+        decimal? medianPriceNis = reader.IsDBNull(1) ? null : Convert.ToDecimal(reader.GetDouble(1));
+        decimal? medianPricePerSqm = reader.IsDBNull(2) ? null : Convert.ToDecimal(reader.GetDouble(2));
         var priceContributorCount = reader.GetInt32(3);
         var pricePerSqmContributorCount = reader.GetInt32(4);
         var warnings = new List<string>();
@@ -373,12 +376,6 @@ public class DatasetStore : IDisposable
     {
         if (filters.MinimumRooms is < 0 || filters.MaximumRooms is < 0 || filters.MinimumRooms > filters.MaximumRooms) throw new ArgumentException("Room bounds are invalid.", nameof(filters));
         if (filters.StartDate > filters.EndDate) throw new ArgumentException("Date bounds are invalid.", nameof(filters));
-    }
-
-    private string NormalizeCity(string value)
-    {
-        var normalized = NormalizeText(value);
-        return _localityCatalog.FindCanonicalHebrewName(normalized) ?? normalized;
     }
 
     private static string NormalizeText(string value) => string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
@@ -451,19 +448,4 @@ public class DatasetStore : IDisposable
         return new NormalizedDate(null, null, "unknown");
     }
 
-    private class NormalizedDate
-    {
-        public NormalizedDate(DateOnly? start, DateOnly? end, string precision)
-        {
-            Start = start;
-            End = end;
-            Precision = precision;
-        }
-
-        public DateOnly? Start { get; }
-
-        public DateOnly? End { get; }
-
-        public string Precision { get; }
-    }
 }

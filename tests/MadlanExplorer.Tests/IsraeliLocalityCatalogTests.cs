@@ -25,6 +25,25 @@ public class IsraeliLocalityCatalogTests
         Assert.Equal("אבו גוש", catalog.FindCanonicalHebrewName("ABU GHOSH"));
     }
 
+    [Fact]
+    public void Resolve_corrects_only_clear_catalog_typos_and_preserves_unknown_values()
+    {
+        var environment = new TestHostEnvironment(AppContext.BaseDirectory);
+        var options = Options.Create(new DatasetOptions { LocalitiesFile = "Data/israeli-localities.json" });
+        var catalog = new IsraeliLocalityCatalog(options, environment);
+        catalog.Load();
+
+        var corrected = catalog.Resolve("ABU GHOS");
+        var unknown = catalog.Resolve("not-a-locality");
+
+        Assert.Equal("typo", corrected.Method);
+        Assert.Equal(472, corrected.OfficialCode);
+        Assert.Equal("אבו גוש", corrected.ResolvedValue);
+        Assert.Equal("unresolved", unknown.Method);
+        Assert.Equal("not-a-locality", unknown.OriginalValue);
+        Assert.False(unknown.OfficialCode.HasValue);
+    }
+
     private class TestHostEnvironment : IHostEnvironment
     {
         public TestHostEnvironment(string contentRootPath)
