@@ -32,9 +32,34 @@ public class QueryGenerationServiceTests
         await Assert.ThrowsAsync<JsonException>(() => service.GenerateAsync("test", CancellationToken.None));
     }
 
+    [Fact]
+    public async Task Generate_corrects_a_clear_city_typo_against_the_locality_catalog()
+    {
+        var provider = new FakeLlmProvider { Content = """{"outcome":"query","filters":{"city":"ABU GHOS"}}""" };
+        var service = CreateService(provider);
+
+        var response = await service.GenerateAsync("How many deals were there in ABU GHOS?", CancellationToken.None);
+
+        Assert.Equal("query", response.Status);
+        Assert.Equal("אבו גוש", response.Filters?.City);
+    }
+
+    [Fact]
+    public async Task Generate_leaves_an_unresolved_city_unchanged()
+    {
+        var provider = new FakeLlmProvider { Content = """{"outcome":"query","filters":{"city":"עיר שלא קיימת בשום קטלוג"}}""" };
+        var service = CreateService(provider);
+
+        var response = await service.GenerateAsync("test", CancellationToken.None);
+
+        Assert.Equal("query", response.Status);
+        Assert.Equal("עיר שלא קיימת בשום קטלוג", response.Filters?.City);
+    }
+
     private static QueryGenerationService CreateService(FakeLlmProvider provider)
     {
         var options = Options.Create(new LlmOptions { Models = new LlmModelsOptions { QueryGeneration = "grok-test-model" } });
-        return new QueryGenerationService(provider, options, new QueryService(new FakeDealRepository()));
+        var queryService = new QueryService(new FakeDealRepository());
+        return new QueryGenerationService(provider, options, queryService, TestLocalityCatalog.CreateLoaded());
     }
 }
