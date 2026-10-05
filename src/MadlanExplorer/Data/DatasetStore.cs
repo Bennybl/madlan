@@ -114,8 +114,16 @@ public class DatasetStore : IDisposable, IDatasetMetadataProvider
                 PropertyType TEXT NULL,
                 Rooms REAL NULL,
                 SizeSqm REAL NULL,
+                Floor REAL NULL,
+                YearBuilt REAL NULL,
+                Condition TEXT NULL,
                 PriceNis REAL NULL,
                 SuppliedPricePerSqm REAL NULL,
+                HasElevator INTEGER NULL,
+                HasParking INTEGER NULL,
+                HasBalcony INTEGER NULL,
+                HasSafeRoom INTEGER NULL,
+                Source TEXT NULL,
                 DealDateStart TEXT NULL,
                 DealDateEnd TEXT NULL
             );
@@ -268,8 +276,16 @@ public class DatasetStore : IDisposable, IDatasetMetadataProvider
                 PropertyType = (SELECT json_extract(NormalizedJson, '$.PropertyType') FROM Reports WHERE Id = Deals.CanonicalReportId),
                 Rooms = (SELECT json_extract(NormalizedJson, '$.Rooms') FROM Reports WHERE Id = Deals.CanonicalReportId),
                 SizeSqm = (SELECT json_extract(NormalizedJson, '$.SizeSqm') FROM Reports WHERE Id = Deals.CanonicalReportId),
+                Floor = (SELECT json_extract(NormalizedJson, '$.Floor') FROM Reports WHERE Id = Deals.CanonicalReportId),
+                YearBuilt = (SELECT json_extract(NormalizedJson, '$.YearBuilt') FROM Reports WHERE Id = Deals.CanonicalReportId),
+                Condition = (SELECT json_extract(NormalizedJson, '$.Condition') FROM Reports WHERE Id = Deals.CanonicalReportId),
                 PriceNis = (SELECT json_extract(NormalizedJson, '$.PriceNis') FROM Reports WHERE Id = Deals.CanonicalReportId),
                 SuppliedPricePerSqm = (SELECT json_extract(NormalizedJson, '$.SuppliedPricePerSqm') FROM Reports WHERE Id = Deals.CanonicalReportId),
+                HasElevator = (SELECT json_extract(NormalizedJson, '$.HasElevator') FROM Reports WHERE Id = Deals.CanonicalReportId),
+                HasParking = (SELECT json_extract(NormalizedJson, '$.HasParking') FROM Reports WHERE Id = Deals.CanonicalReportId),
+                HasBalcony = (SELECT json_extract(NormalizedJson, '$.HasBalcony') FROM Reports WHERE Id = Deals.CanonicalReportId),
+                HasSafeRoom = (SELECT json_extract(NormalizedJson, '$.HasSafeRoom') FROM Reports WHERE Id = Deals.CanonicalReportId),
+                Source = (SELECT json_extract(NormalizedJson, '$.Source') FROM Reports WHERE Id = Deals.CanonicalReportId),
                 DealDateStart = (SELECT json_extract(NormalizedJson, '$.DealDateStart') FROM Reports WHERE Id = Deals.CanonicalReportId),
                 DealDateEnd = (SELECT json_extract(NormalizedJson, '$.DealDateEnd') FROM Reports WHERE Id = Deals.CanonicalReportId)
             WHERE CanonicalReportId IS NOT NULL;

@@ -23,4 +23,10 @@ public class DealQueryResult
     public IReadOnlyDictionary<string, int> ExclusionReasons { get; init; } = new Dictionary<string, int>();
 
     public IReadOnlyList<string> Warnings { get; init; } = [];
+
+    public QueryMetric? RequestedMetric { get; init; }
+
+    public decimal? RequestedMetricValue { get; init; }
+
+    public string? RequestedMetricDealId { get; init; }
 }

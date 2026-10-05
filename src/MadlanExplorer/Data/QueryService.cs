@@ -9,10 +9,10 @@ public class QueryService
         _dealRepository = dealRepository;
     }
 
-    public DealQueryResult Query(DealFilters filters)
+    public DealQueryResult Query(DealFilters filters, QueryMetric metric = QueryMetric.TransactionCount)
     {
         ValidateFilters(filters);
-        return _dealRepository.Execute(new DealQuery { Filters = filters });
+        return _dealRepository.Execute(new DealQuery { Filters = filters, Metric = metric });
     }
 
     public void Validate(DealFilters filters) => ValidateFilters(filters);
@@ -27,6 +27,16 @@ public class QueryService
         if (filters.StartDate > filters.EndDate)
         {
             throw new ArgumentException("Date bounds are invalid.", nameof(filters));
+        }
+
+        if (filters.MinimumFloor > filters.MaximumFloor)
+        {
+            throw new ArgumentException("Floor bounds are invalid.", nameof(filters));
+        }
+
+        if (filters.MinimumYearBuilt > filters.MaximumYearBuilt)
+        {
+            throw new ArgumentException("Year-built bounds are invalid.", nameof(filters));
         }
     }
 }

@@ -34,7 +34,7 @@
           <button type="button" class="example-question" data-question="כמה תשתלם לי הדירה שלי בעוד שנה?">כמה תשתלם לי הדירה שלי בעוד שנה?</button>
         </div>
         <div class="actions">
-          <button type="submit">שאל</button>
+          <button type="submit" id="ask-submit">שאל</button>
         </div>
       </form>
       <div id="ask-status" role="status" aria-live="polite"></div>
@@ -78,7 +78,7 @@
           </div>
         </div>
         <div class="actions">
-          <button type="submit">חפש</button>
+          <button type="submit" id="filters-submit">חפש</button>
           <button type="button" id="clear-filters">נקה סינון</button>
         </div>
       </form>
@@ -130,6 +130,14 @@
             <h3>מחיר למ"ר חציוני (₪)</h3>
             <p class="metric-value" id="metric-median-price-per-sqm">—</p>
             <p class="metric-count" id="metric-price-per-sqm-contributors"></p>
+          </article>
+        </div>
+
+        <div id="requested-metric-panel" hidden>
+          <article class="metric-card">
+            <h3 id="requested-metric-label"></h3>
+            <p class="metric-value" id="requested-metric-value">—</p>
+            <p class="metric-count" id="requested-metric-deal"></p>
           </article>
         </div>
 

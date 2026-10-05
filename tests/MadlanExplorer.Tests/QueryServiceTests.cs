@@ -28,4 +28,37 @@ public class QueryServiceTests
         Assert.Throws<ArgumentException>(() => service.Query(new DealFilters { MinimumRooms = 5, MaximumRooms = 4 }));
         Assert.Null(repository.ReceivedQuery);
     }
+
+    [Fact]
+    public void Query_defaults_to_transaction_count_when_no_metric_is_specified()
+    {
+        var repository = new FakeDealRepository();
+        var service = new QueryService(repository);
+
+        service.Query(new DealFilters());
+
+        Assert.Equal(QueryMetric.TransactionCount, repository.ReceivedQuery?.Metric);
+    }
+
+    [Fact]
+    public void Query_passes_the_requested_metric_to_the_repository()
+    {
+        var repository = new FakeDealRepository();
+        var service = new QueryService(repository);
+
+        service.Query(new DealFilters(), QueryMetric.MaxPrice);
+
+        Assert.Equal(QueryMetric.MaxPrice, repository.ReceivedQuery?.Metric);
+    }
+
+    [Fact]
+    public void Query_rejects_invalid_floor_and_year_built_bounds()
+    {
+        var repository = new FakeDealRepository();
+        var service = new QueryService(repository);
+
+        Assert.Throws<ArgumentException>(() => service.Query(new DealFilters { MinimumFloor = 5, MaximumFloor = 2 }));
+        Assert.Throws<ArgumentException>(() => service.Query(new DealFilters { MinimumYearBuilt = 2020, MaximumYearBuilt = 2000 }));
+        Assert.Null(repository.ReceivedQuery);
+    }
 }

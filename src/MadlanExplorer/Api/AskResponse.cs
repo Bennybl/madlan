@@ -10,6 +10,8 @@ public class AskResponse
 
     public DealFilters? Filters { get; init; }
 
+    public QueryMetric? Metric { get; init; }
+
     public DealQueryResult? Result { get; init; }
 
     public string? Summary { get; init; }

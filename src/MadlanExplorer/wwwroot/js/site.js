@@ -3,7 +3,7 @@
 
   const NETWORK_ERROR_MESSAGE = "לא ניתן היה להתחבר לשרת. בדקו את החיבור ונסו שוב.";
   const REQUEST_TIMEOUT_MESSAGE = "הבקשה ארכה זמן רב מדי ולא התקבלה תשובה. נסו שוב או השתמשו בסינון הידני.";
-  const ASK_TIMEOUT_MS = 130000;
+  const ASK_TIMEOUT_MS = 250000;
   const NUMBER_FORMAT = new Intl.NumberFormat("he-IL");
 
   const dealDetailCache = new Map();
@@ -357,7 +357,55 @@
     status.hidden = false;
     status.classList.remove("status-error");
     status.textContent = message;
+    byId("requested-metric-panel").hidden = true;
     hasDisplayedResults = false;
+  }
+
+  const METRIC_LABELS = {
+    MedianPrice: "מחיר חציוני (₪)",
+    AveragePrice: "מחיר ממוצע (₪)",
+    MinPrice: "המחיר הזול ביותר (₪)",
+    MaxPrice: "המחיר היקר ביותר (₪)",
+    MedianPricePerSqm: "מחיר למ\"ר חציוני (₪)",
+    AveragePricePerSqm: "מחיר למ\"ר ממוצע (₪)",
+    MinPricePerSqm: "מחיר למ\"ר הזול ביותר (₪)",
+    MaxPricePerSqm: "מחיר למ\"ר היקר ביותר (₪)",
+    MedianSizeSqm: "שטח חציוני (מ\"ר)",
+    AverageSizeSqm: "שטח ממוצע (מ\"ר)",
+    MinSizeSqm: "השטח הקטן ביותר (מ\"ר)",
+    MaxSizeSqm: "השטח הגדול ביותר (מ\"ר)",
+    MedianRooms: "מספר חדרים חציוני",
+    AverageRooms: "מספר חדרים ממוצע",
+    MinRooms: "מספר החדרים הנמוך ביותר",
+    MaxRooms: "מספר החדרים הגבוה ביותר",
+    MedianFloor: "קומה חציונית",
+    AverageFloor: "קומה ממוצעת",
+    MinFloor: "הקומה הנמוכה ביותר",
+    MaxFloor: "הקומה הגבוהה ביותר",
+    MedianYearBuilt: "שנת בנייה חציונית",
+    AverageYearBuilt: "שנת בנייה ממוצעת",
+    MinYearBuilt: "שנת הבנייה המוקדמת ביותר",
+    MaxYearBuilt: "שנת הבנייה המאוחרת ביותר"
+  };
+
+  const CURRENCY_METRICS = new Set([
+    "MedianPrice", "AveragePrice", "MinPrice", "MaxPrice",
+    "MedianPricePerSqm", "AveragePricePerSqm", "MinPricePerSqm", "MaxPricePerSqm"
+  ]);
+
+  function renderRequestedMetric(result) {
+    const panel = byId("requested-metric-panel");
+    if (!result.requestedMetric || result.requestedMetricValue === null || result.requestedMetricValue === undefined) {
+      panel.hidden = true;
+      return;
+    }
+
+    byId("requested-metric-label").textContent = METRIC_LABELS[result.requestedMetric] || result.requestedMetric;
+    byId("requested-metric-value").textContent = CURRENCY_METRICS.has(result.requestedMetric)
+      ? formatCurrency(result.requestedMetricValue)
+      : NUMBER_FORMAT.format(result.requestedMetricValue);
+    byId("requested-metric-deal").textContent = result.requestedMetricDealId ? "עסקה: " + result.requestedMetricDealId : "";
+    panel.hidden = false;
   }
 
   function renderResultData(result) {
@@ -379,6 +427,7 @@
     byId("metric-price-per-sqm-contributors").textContent = "מבוסס על " + NUMBER_FORMAT.format(result.pricePerSqmContributorCount) + " עסקאות עם מחיר ושטח תקינים";
 
     renderWarnings(result.warnings);
+    renderRequestedMetric(result);
     renderEvidenceTable(result.contributorDealIds, result.hasMoreEvidence);
     hasDisplayedResults = true;
   }
@@ -408,8 +457,10 @@
 
   async function submitFilters(filters) {
     const token = beginRequest();
+    const submitButton = byId("filters-submit");
     resetInterpretationAndSummary();
     byId("stale-results-notice").hidden = true;
+    submitButton.disabled = true;
 
     const status = byId("results-status");
     status.hidden = false;
@@ -427,11 +478,17 @@
     } catch (error) {
       if (!isCurrentRequest(token)) return;
       handleRequestFailure(error);
+    } finally {
+      if (isCurrentRequest(token)) {
+        submitButton.disabled = false;
+      }
     }
   }
 
   async function submitAsk(question) {
     const askStatus = byId("ask-status");
+    const submitButton = byId("ask-submit");
+    const questionInput = byId("ask-question");
     askStatus.classList.remove("status-error");
 
     if (!question) {
@@ -441,7 +498,9 @@
 
     const token = beginRequest();
     resetInterpretationAndSummary();
-    askStatus.textContent = "מעבד את השאלה… זה עשוי לקחת עד כשתי דקות, כי כמה בדיקות אוטומטיות רצות ברקע.";
+    submitButton.disabled = true;
+    questionInput.disabled = true;
+    askStatus.textContent = "מעבד את השאלה… זה עשוי לקחת מספר דקות, כי כמה בדיקות אוטומטיות רצות ברקע.";
 
     const status = byId("results-status");
     status.hidden = false;
@@ -495,6 +554,11 @@
       if (!isCurrentRequest(token)) return;
       askStatus.textContent = "";
       handleRequestFailure(error);
+    } finally {
+      if (isCurrentRequest(token)) {
+        submitButton.disabled = false;
+        questionInput.disabled = false;
+      }
     }
   }
 

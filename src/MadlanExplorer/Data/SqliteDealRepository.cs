@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 
 namespace MadlanExplorer;
@@ -6,6 +6,28 @@ namespace MadlanExplorer;
 public class SqliteDealRepository : IDealRepository
 {
     private const int MinimumMetricContributorCount = 5;
+
+    private const string FilterPredicate = """
+        ConflictStatus = 'usable'
+          AND ($city IS NULL OR City = $city)
+          AND ($neighborhood IS NULL OR Neighborhood = $neighborhood)
+          AND ($propertyType IS NULL OR PropertyType = $propertyType)
+          AND ($minimumRooms IS NULL OR Rooms >= $minimumRooms)
+          AND ($maximumRooms IS NULL OR Rooms <= $maximumRooms)
+          AND ($startDate IS NULL OR DealDateStart >= $startDate)
+          AND ($endDate IS NULL OR DealDateEnd <= $endDate)
+          AND ($minimumFloor IS NULL OR Floor >= $minimumFloor)
+          AND ($maximumFloor IS NULL OR Floor <= $maximumFloor)
+          AND ($minimumYearBuilt IS NULL OR YearBuilt >= $minimumYearBuilt)
+          AND ($maximumYearBuilt IS NULL OR YearBuilt <= $maximumYearBuilt)
+          AND ($condition IS NULL OR Condition = $condition)
+          AND ($source IS NULL OR Source = $source)
+          AND ($hasElevator IS NULL OR HasElevator = $hasElevator)
+          AND ($hasParking IS NULL OR HasParking = $hasParking)
+          AND ($hasBalcony IS NULL OR HasBalcony = $hasBalcony)
+          AND ($hasSafeRoom IS NULL OR HasSafeRoom = $hasSafeRoom)
+        """;
+
     private readonly DatasetStore _datasetStore;
 
     public SqliteDealRepository(DatasetStore datasetStore)
@@ -19,19 +41,8 @@ public class SqliteDealRepository : IDealRepository
         var evidencePageSize = query.EvidencePageSize;
         using var connection = _datasetStore.OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = """
-            WITH Filtered AS (
-                SELECT DealId, PriceNis, SizeSqm, SuppliedPricePerSqm
-                FROM Deals
-                WHERE ConflictStatus = 'usable'
-                  AND ($city IS NULL OR City = $city)
-                  AND ($neighborhood IS NULL OR Neighborhood = $neighborhood)
-                  AND ($propertyType IS NULL OR PropertyType = $propertyType)
-                  AND ($minimumRooms IS NULL OR Rooms >= $minimumRooms)
-                  AND ($maximumRooms IS NULL OR Rooms <= $maximumRooms)
-                  AND ($startDate IS NULL OR DealDateStart >= $startDate)
-                  AND ($endDate IS NULL OR DealDateEnd <= $endDate)
-            ),
+        command.CommandText = $"""
+            WITH {BuildFilteredCte()},
             Prices AS (SELECT PriceNis AS Value FROM Filtered WHERE PriceNis > 0),
             RankedPrices AS (SELECT Value, ROW_NUMBER() OVER (ORDER BY Value) AS Position, COUNT(*) OVER () AS Total FROM Prices),
             Ratios AS (SELECT PriceNis / SizeSqm AS Value FROM Filtered WHERE PriceNis > 0 AND SizeSqm > 0),
@@ -82,6 +93,14 @@ public class SqliteDealRepository : IDealRepository
 
         reader.Dispose();
         var evidence = ReadEvidence(connection, filters, evidencePageSize);
+
+        decimal? requestedMetricValue = null;
+        string? requestedMetricDealId = null;
+        if (query.Metric != QueryMetric.TransactionCount)
+        {
+            (requestedMetricValue, requestedMetricDealId) = ComputeRequestedMetric(connection, filters, query.Metric);
+        }
+
         return new DealQueryResult
         {
             TransactionCount = transactionCount,
@@ -93,7 +112,10 @@ public class SqliteDealRepository : IDealRepository
             PriceContributorDealIds = evidence.DealIds,
             PricePerSqmContributorDealIds = evidence.DealIds,
             HasMoreEvidence = evidence.HasMore,
-            Warnings = warnings
+            Warnings = warnings,
+            RequestedMetric = query.Metric == QueryMetric.TransactionCount ? null : query.Metric,
+            RequestedMetricValue = requestedMetricValue,
+            RequestedMetricDealId = requestedMetricDealId
         };
     }
 
@@ -185,20 +207,113 @@ public class SqliteDealRepository : IDealRepository
         };
     }
 
+    private static string BuildFilteredCte()
+    {
+        return $"""
+            Filtered AS (
+                SELECT DealId, PriceNis, SizeSqm, Rooms, Floor, YearBuilt, SuppliedPricePerSqm
+                FROM Deals
+                WHERE {FilterPredicate}
+            )
+            """;
+    }
+
+    private static (decimal? Value, string? DealId) ComputeRequestedMetric(SqliteConnection connection, DealFilters filters, QueryMetric metric)
+    {
+        var (expression, condition, aggregation) = DescribeMetric(metric);
+        using var command = connection.CreateCommand();
+        command.CommandText = aggregation switch
+        {
+            MetricAggregation.Min => $"""
+                WITH {BuildFilteredCte()}
+                SELECT DealId, {expression} AS MetricValue
+                FROM Filtered
+                WHERE {condition}
+                ORDER BY MetricValue ASC
+                LIMIT 1;
+                """,
+            MetricAggregation.Max => $"""
+                WITH {BuildFilteredCte()}
+                SELECT DealId, {expression} AS MetricValue
+                FROM Filtered
+                WHERE {condition}
+                ORDER BY MetricValue DESC
+                LIMIT 1;
+                """,
+            MetricAggregation.Average => $"""
+                WITH {BuildFilteredCte()}
+                SELECT NULL, AVG({expression})
+                FROM Filtered
+                WHERE {condition};
+                """,
+            MetricAggregation.Median => $"""
+                WITH {BuildFilteredCte()},
+                Ranked AS (
+                    SELECT {expression} AS Value, ROW_NUMBER() OVER (ORDER BY {expression}) AS Position, COUNT(*) OVER () AS Total
+                    FROM Filtered
+                    WHERE {condition}
+                )
+                SELECT NULL, AVG(Value)
+                FROM Ranked
+                WHERE Position IN ((Total + 1) / 2, (Total + 2) / 2);
+                """,
+            _ => throw new ArgumentOutOfRangeException(nameof(metric), metric, "Unsupported metric aggregation.")
+        };
+        AddFilterParameters(command, filters);
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read() || reader.IsDBNull(1))
+        {
+            return (null, null);
+        }
+
+        var dealId = reader.IsDBNull(0) ? null : reader.GetString(0);
+        var value = Convert.ToDecimal(reader.GetDouble(1));
+        return (value, dealId);
+    }
+
+    private enum MetricAggregation { Min, Max, Average, Median }
+
+    private static (string Expression, string Condition, MetricAggregation Aggregation) DescribeMetric(QueryMetric metric)
+    {
+        return metric switch
+        {
+            QueryMetric.MinPrice => ("PriceNis", "PriceNis > 0", MetricAggregation.Min),
+            QueryMetric.MaxPrice => ("PriceNis", "PriceNis > 0", MetricAggregation.Max),
+            QueryMetric.AveragePrice => ("PriceNis", "PriceNis > 0", MetricAggregation.Average),
+            QueryMetric.MedianPrice => ("PriceNis", "PriceNis > 0", MetricAggregation.Median),
+            QueryMetric.MinPricePerSqm => ("(PriceNis * 1.0 / SizeSqm)", "PriceNis > 0 AND SizeSqm > 0", MetricAggregation.Min),
+            QueryMetric.MaxPricePerSqm => ("(PriceNis * 1.0 / SizeSqm)", "PriceNis > 0 AND SizeSqm > 0", MetricAggregation.Max),
+            QueryMetric.AveragePricePerSqm => ("(PriceNis * 1.0 / SizeSqm)", "PriceNis > 0 AND SizeSqm > 0", MetricAggregation.Average),
+            QueryMetric.MedianPricePerSqm => ("(PriceNis * 1.0 / SizeSqm)", "PriceNis > 0 AND SizeSqm > 0", MetricAggregation.Median),
+            QueryMetric.MinSizeSqm => ("SizeSqm", "SizeSqm IS NOT NULL", MetricAggregation.Min),
+            QueryMetric.MaxSizeSqm => ("SizeSqm", "SizeSqm IS NOT NULL", MetricAggregation.Max),
+            QueryMetric.AverageSizeSqm => ("SizeSqm", "SizeSqm IS NOT NULL", MetricAggregation.Average),
+            QueryMetric.MedianSizeSqm => ("SizeSqm", "SizeSqm IS NOT NULL", MetricAggregation.Median),
+            QueryMetric.MinRooms => ("Rooms", "Rooms IS NOT NULL", MetricAggregation.Min),
+            QueryMetric.MaxRooms => ("Rooms", "Rooms IS NOT NULL", MetricAggregation.Max),
+            QueryMetric.AverageRooms => ("Rooms", "Rooms IS NOT NULL", MetricAggregation.Average),
+            QueryMetric.MedianRooms => ("Rooms", "Rooms IS NOT NULL", MetricAggregation.Median),
+            QueryMetric.MinFloor => ("Floor", "Floor IS NOT NULL", MetricAggregation.Min),
+            QueryMetric.MaxFloor => ("Floor", "Floor IS NOT NULL", MetricAggregation.Max),
+            QueryMetric.AverageFloor => ("Floor", "Floor IS NOT NULL", MetricAggregation.Average),
+            QueryMetric.MedianFloor => ("Floor", "Floor IS NOT NULL", MetricAggregation.Median),
+            QueryMetric.MinYearBuilt => ("YearBuilt", "YearBuilt IS NOT NULL", MetricAggregation.Min),
+            QueryMetric.MaxYearBuilt => ("YearBuilt", "YearBuilt IS NOT NULL", MetricAggregation.Max),
+            QueryMetric.AverageYearBuilt => ("YearBuilt", "YearBuilt IS NOT NULL", MetricAggregation.Average),
+            QueryMetric.MedianYearBuilt => ("YearBuilt", "YearBuilt IS NOT NULL", MetricAggregation.Median),
+            QueryMetric.TransactionCount => throw new ArgumentOutOfRangeException(nameof(metric), metric, "Transaction count does not need a metric query."),
+            _ => throw new ArgumentOutOfRangeException(nameof(metric), metric, "Unsupported metric.")
+        };
+    }
+
     private static (IReadOnlyList<string> DealIds, bool HasMore) ReadEvidence(SqliteConnection connection, DealFilters filters, int evidencePageSize)
     {
         using var command = connection.CreateCommand();
-        command.CommandText = """
+        command.CommandText = $"""
             SELECT DealId
             FROM Deals
-            WHERE ConflictStatus = 'usable'
-              AND ($city IS NULL OR City = $city)
-              AND ($neighborhood IS NULL OR Neighborhood = $neighborhood)
-              AND ($propertyType IS NULL OR PropertyType = $propertyType)
-              AND ($minimumRooms IS NULL OR Rooms >= $minimumRooms)
-              AND ($maximumRooms IS NULL OR Rooms <= $maximumRooms)
-              AND ($startDate IS NULL OR DealDateStart >= $startDate)
-              AND ($endDate IS NULL OR DealDateEnd <= $endDate)
+            WHERE {FilterPredicate}
             ORDER BY DealId
             LIMIT $limit;
             """;
@@ -224,6 +339,26 @@ public class SqliteDealRepository : IDealRepository
         command.Parameters.AddWithValue("$maximumRooms", (object?)filters.MaximumRooms ?? DBNull.Value);
         command.Parameters.AddWithValue("$startDate", filters.StartDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$endDate", filters.EndDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$minimumFloor", (object?)filters.MinimumFloor ?? DBNull.Value);
+        command.Parameters.AddWithValue("$maximumFloor", (object?)filters.MaximumFloor ?? DBNull.Value);
+        command.Parameters.AddWithValue("$minimumYearBuilt", (object?)filters.MinimumYearBuilt ?? DBNull.Value);
+        command.Parameters.AddWithValue("$maximumYearBuilt", (object?)filters.MaximumYearBuilt ?? DBNull.Value);
+        command.Parameters.AddWithValue("$condition", (object?)filters.Condition?.Trim() ?? DBNull.Value);
+        command.Parameters.AddWithValue("$source", (object?)filters.Source?.Trim() ?? DBNull.Value);
+        command.Parameters.AddWithValue("$hasElevator", ToSqliteBoolean(filters.HasElevator));
+        command.Parameters.AddWithValue("$hasParking", ToSqliteBoolean(filters.HasParking));
+        command.Parameters.AddWithValue("$hasBalcony", ToSqliteBoolean(filters.HasBalcony));
+        command.Parameters.AddWithValue("$hasSafeRoom", ToSqliteBoolean(filters.HasSafeRoom));
+    }
+
+    private static object ToSqliteBoolean(bool? value)
+    {
+        if (value is null)
+        {
+            return DBNull.Value;
+        }
+
+        return value.Value ? 1 : 0;
     }
 
     private static IReadOnlyList<string> ReadFilterValues(SqliteConnection connection, string columnName)

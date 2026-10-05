@@ -72,7 +72,7 @@ public class ResultVerificationService
         return
             "You check whether a candidate Hebrew summary correctly and completely answers the original question using only the calculated evidence given below. " +
             "Reject it if it answers a different question than the one asked, states a number or deal ID not present in the evidence, or omits a limitation the evidence requires, such as a warning, an exclusion, or an empty result. " +
-            "Return JSON with outcome (approved, rejected) and message explaining the reason when the outcome is rejected. " +
+            "Return JSON with outcome (approved, rejected) and message (a short Hebrew explanation, required when the outcome is rejected). " +
             $"Original user prompt: {prompt} " +
             $"Calculated evidence: {evidenceJson} " +
             $"Candidate summary: {candidateJson}";

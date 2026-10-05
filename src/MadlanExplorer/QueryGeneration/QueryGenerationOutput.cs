@@ -7,4 +7,6 @@ public class QueryGenerationOutput
     public string? Message { get; init; }
 
     public DealFilters? Filters { get; init; }
+
+    public string? Metric { get; init; }
 }

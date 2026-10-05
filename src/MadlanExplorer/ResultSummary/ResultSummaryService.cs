@@ -73,6 +73,7 @@ public class ResultSummaryService
             "You write a short Hebrew summary answering a real-estate question using only the calculated evidence given below. " +
             "Never invent a number, a deal ID, or a claim that is not present in the evidence. If there are no contributing transactions, say so plainly instead of guessing. " +
             "State the sample size and mention any warnings or exclusions in plain language. " +
+            "When requestedMetric is present, it is the specific statistic the question asked for; requestedMetricValue is its computed value, and requestedMetricDealId (when present, for Min/Max metrics) is the specific matching deal to name in the answer. " +
             "Return JSON with summary (Hebrew text) and referencedDealIds (deal IDs from the evidence that support the summary; empty only when there is no evidence). " +
             $"Original user prompt: {prompt} " +
             $"Calculated evidence: {evidenceJson}";
