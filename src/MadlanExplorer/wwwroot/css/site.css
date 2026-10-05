@@ -82,11 +82,53 @@ main {
   font-weight: 600;
 }
 
-.field input {
+.field input,
+.field textarea {
   padding: 0.5rem;
   border: 1px solid var(--color-border);
   border-radius: 6px;
   font-size: 1rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.example-questions {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.example-question {
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+#interpretation-panel,
+#summary-panel {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+#interpretation-panel h3,
+#summary-panel h3 {
+  margin-top: 0;
+}
+
+#summary-panel {
+  border-inline-start: 4px solid var(--color-accent);
+}
+
+#stale-results-notice {
+  margin-bottom: 1rem;
 }
 
 .actions {

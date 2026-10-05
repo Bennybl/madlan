@@ -1,6 +1,6 @@
 # Madlan Deal Explorer - Architecture
 
-Status: revised on 2026-10-05. Steps 1-11 are merged; step 12 is under review. Later steps are planned work.
+Status: revised on 2026-10-05. Steps 1-12 are merged; step 13 is under review. Later steps are planned work.
 
 ## 1. Product
 

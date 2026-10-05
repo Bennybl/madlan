@@ -19,9 +19,30 @@
       <dl id="coverage-list" class="coverage-grid" hidden></dl>
     </section>
 
+    <section class="panel" aria-labelledby="ask-heading">
+      <h2 id="ask-heading">שאלו בשפה חופשית</h2>
+      <p class="hint">המערכת מפרשת את השאלה, מאמתת אותה מול הנתונים ומציגה תשובה מבוססת ראיות. אם משהו נכשל, הסינון הידני למטה תמיד זמין.</p>
+      <form id="ask-form">
+        <div class="field">
+          <label for="ask-question">השאלה שלכם</label>
+          <textarea id="ask-question" name="question" rows="2"></textarea>
+        </div>
+        <div class="example-questions">
+          <span class="hint">דוגמאות:</span>
+          <button type="button" class="example-question" data-question="מה המחיר החציוני של דירת 4 חדרים בחולון ב-2025?">מה המחיר החציוני של דירת 4 חדרים בחולון ב-2025?</button>
+          <button type="button" class="example-question" data-question="כמה עסקאות דירות נמכרו בתל אביב?">כמה עסקאות דירות נמכרו בתל אביב?</button>
+          <button type="button" class="example-question" data-question="כמה תשתלם לי הדירה שלי בעוד שנה?">כמה תשתלם לי הדירה שלי בעוד שנה?</button>
+        </div>
+        <div class="actions">
+          <button type="submit">שאל</button>
+        </div>
+      </form>
+      <div id="ask-status" role="status" aria-live="polite"></div>
+    </section>
+
     <section class="panel" aria-labelledby="filters-heading">
       <h2 id="filters-heading">סינון ידני</h2>
-      <p class="hint">הסינון הידני עובד תמיד, גם אם מנוע השאלות החכם אינו זמין.</p>
+      <p class="hint">הסינון הידני עובד תמיד, גם אם מנוע השאלות החכם אינו זמין. עריכת הסינון ולחיצה על "חפש" תמיד מריצה חיפוש ישיר על הנתונים, ללא תשובה מאומתת.</p>
       <form id="filters-form">
         <div class="field-grid">
           <div class="field">
@@ -81,9 +102,20 @@
 
     <section class="panel" aria-labelledby="results-heading">
       <h2 id="results-heading">תוצאות</h2>
-      <div id="results-status" role="status" aria-live="polite">בחרו סינון ולחצו "חפש" כדי לראות תוצאות.</div>
+      <div id="results-status" role="status" aria-live="polite">בחרו סינון או שאלו שאלה כדי לראות תוצאות.</div>
+      <p id="stale-results-notice" class="status-error" hidden></p>
 
       <div id="results-content" hidden>
+        <div id="interpretation-panel" hidden>
+          <h3>איך הבנו את השאלה</h3>
+          <p id="interpretation-text"></p>
+        </div>
+
+        <div id="summary-panel" hidden>
+          <h3>תשובה מאומתת</h3>
+          <p id="summary-text"></p>
+        </div>
+
         <div class="metric-grid">
           <article class="metric-card">
             <h3>מספר עסקאות</h3>

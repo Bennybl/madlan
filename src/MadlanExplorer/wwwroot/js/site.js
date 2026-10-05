@@ -2,20 +2,39 @@
   "use strict";
 
   const NETWORK_ERROR_MESSAGE = "לא ניתן היה להתחבר לשרת. בדקו את החיבור ונסו שוב.";
+  const REQUEST_TIMEOUT_MESSAGE = "הבקשה ארכה זמן רב מדי ולא התקבלה תשובה. נסו שוב או השתמשו בסינון הידני.";
+  const ASK_TIMEOUT_MS = 70000;
   const NUMBER_FORMAT = new Intl.NumberFormat("he-IL");
 
   const dealDetailCache = new Map();
+  let latestRequestToken = 0;
+  let hasDisplayedResults = false;
 
   function byId(id) {
     return document.getElementById(id);
   }
 
-  async function fetchJson(url, options) {
+  function beginRequest() {
+    latestRequestToken += 1;
+    return latestRequestToken;
+  }
+
+  function isCurrentRequest(token) {
+    return token === latestRequestToken;
+  }
+
+  async function fetchJson(url, options, timeoutMs) {
+    const controller = timeoutMs ? new AbortController() : null;
+    const fetchOptions = controller ? { ...options, signal: controller.signal } : options;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
     let response;
     try {
-      response = await fetch(url, options);
+      response = await fetch(url, fetchOptions);
     } catch {
-      throw new Error(NETWORK_ERROR_MESSAGE);
+      throw new Error(controller && controller.signal.aborted ? REQUEST_TIMEOUT_MESSAGE : NETWORK_ERROR_MESSAGE);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
     }
 
     let body = null;
@@ -101,6 +120,40 @@
     if (endDate) filters.endDate = endDate;
 
     return filters;
+  }
+
+  function applyFiltersToForm(filters) {
+    byId("filter-city").value = filters.city || "";
+    byId("filter-neighborhood").value = filters.neighborhood || "";
+    byId("filter-property-type").value = filters.propertyType || "";
+    byId("filter-min-rooms").value = filters.minimumRooms ?? "";
+    byId("filter-max-rooms").value = filters.maximumRooms ?? "";
+    byId("filter-start-date").value = filters.startDate || "";
+    byId("filter-end-date").value = filters.endDate || "";
+  }
+
+  function describeFilters(filters) {
+    const parts = [];
+
+    if (filters.city) parts.push("עיר: " + filters.city);
+    if (filters.neighborhood) parts.push("שכונה: " + filters.neighborhood);
+    if (filters.propertyType) parts.push("סוג נכס: " + filters.propertyType);
+
+    if (filters.minimumRooms != null || filters.maximumRooms != null) {
+      if (filters.minimumRooms != null && filters.minimumRooms === filters.maximumRooms) {
+        parts.push("חדרים: " + filters.minimumRooms);
+      } else {
+        const min = filters.minimumRooms != null ? filters.minimumRooms : "ללא מגבלה";
+        const max = filters.maximumRooms != null ? filters.maximumRooms : "ללא מגבלה";
+        parts.push("חדרים: בין " + min + " ל-" + max);
+      }
+    }
+
+    if (filters.startDate || filters.endDate) {
+      parts.push("טווח תאריכים: " + (filters.startDate || "ללא התחלה") + " עד " + (filters.endDate || "ללא סיום"));
+    }
+
+    return parts.length > 0 ? parts.join(" · ") : "לא זוהו סינונים ספציפיים בשאלה; מוצגות כל העסקאות התואמות.";
   }
 
   function formatCurrency(value) {
@@ -297,21 +350,27 @@
     return normalized.DealDateStart;
   }
 
-  function renderResults(filters, response) {
+  function showEmptyResults(message) {
     const status = byId("results-status");
     const content = byId("results-content");
-    const result = response.result;
+    content.hidden = true;
+    status.hidden = false;
+    status.classList.remove("status-error");
+    status.textContent = message;
+    hasDisplayedResults = false;
+  }
 
+  function renderResultData(result) {
     if (result.transactionCount === 0) {
-      content.hidden = true;
-      status.hidden = false;
-      status.classList.remove("status-error");
-      status.textContent = "לא נמצאו עסקאות התואמות לסינון שנבחר. נסו להרחיב את טווח החיפוש.";
+      showEmptyResults("לא נמצאו עסקאות התואמות לסינון שנבחר. נסו להרחיב את טווח החיפוש.");
       return;
     }
 
+    const status = byId("results-status");
+    const content = byId("results-content");
     status.hidden = true;
     content.hidden = false;
+    byId("stale-results-notice").hidden = true;
 
     byId("metric-transaction-count").textContent = NUMBER_FORMAT.format(result.transactionCount);
     byId("metric-median-price").textContent = formatCurrency(result.medianPriceNis);
@@ -321,12 +380,38 @@
 
     renderWarnings(result.warnings);
     renderEvidenceTable(result.contributorDealIds, result.hasMoreEvidence);
+    hasDisplayedResults = true;
+  }
+
+  function handleRequestFailure(error) {
+    const status = byId("results-status");
+    const content = byId("results-content");
+    const stale = byId("stale-results-notice");
+
+    if (hasDisplayedResults) {
+      stale.hidden = false;
+      stale.textContent = "התוצאות שלהלן הן מהחיפוש הקודם שהצליח; החיפוש האחרון נכשל: " + error.message;
+      return;
+    }
+
+    content.hidden = true;
+    stale.hidden = true;
+    status.hidden = false;
+    status.classList.add("status-error");
+    status.textContent = error.message;
+  }
+
+  function resetInterpretationAndSummary() {
+    byId("interpretation-panel").hidden = true;
+    byId("summary-panel").hidden = true;
   }
 
   async function submitFilters(filters) {
+    const token = beginRequest();
+    resetInterpretationAndSummary();
+    byId("stale-results-notice").hidden = true;
+
     const status = byId("results-status");
-    const content = byId("results-content");
-    content.hidden = true;
     status.hidden = false;
     status.classList.remove("status-error");
     status.textContent = "מחשב תוצאות…";
@@ -337,12 +422,79 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(filters)
       });
-      renderResults(filters, response);
+      if (!isCurrentRequest(token)) return;
+      renderResultData(response.result);
     } catch (error) {
-      content.hidden = true;
-      status.hidden = false;
-      status.classList.add("status-error");
-      status.textContent = error.message;
+      if (!isCurrentRequest(token)) return;
+      handleRequestFailure(error);
+    }
+  }
+
+  async function submitAsk(question) {
+    const askStatus = byId("ask-status");
+    askStatus.classList.remove("status-error");
+
+    if (!question) {
+      askStatus.textContent = "יש להקליד שאלה.";
+      return;
+    }
+
+    const token = beginRequest();
+    resetInterpretationAndSummary();
+    askStatus.textContent = "מעבד את השאלה… זה עשוי לקחת עד דקה, כי כמה בדיקות אוטומטיות רצות ברקע.";
+
+    const status = byId("results-status");
+    status.hidden = false;
+    status.classList.remove("status-error");
+    status.textContent = "ממתין לתשובה לשאלה…";
+    byId("results-content").hidden = true;
+    byId("stale-results-notice").hidden = true;
+
+    try {
+      const response = await fetchJson(
+        "/api/ask",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: question })
+        },
+        ASK_TIMEOUT_MS
+      );
+
+      if (!isCurrentRequest(token)) return;
+      askStatus.textContent = "";
+
+      if (response.status === "query") {
+        applyFiltersToForm(response.filters || {});
+        byId("interpretation-panel").hidden = false;
+        byId("interpretation-text").textContent = describeFilters(response.filters || {});
+
+        const summaryPanel = byId("summary-panel");
+        if (response.summary) {
+          summaryPanel.hidden = false;
+          byId("summary-text").textContent = response.summary;
+        } else {
+          summaryPanel.hidden = true;
+        }
+
+        renderResultData(response.result);
+
+        if (!response.summary && response.message) {
+          askStatus.textContent = response.message;
+        }
+        return;
+      }
+
+      resetInterpretationAndSummary();
+      byId("results-content").hidden = true;
+      byId("stale-results-notice").hidden = true;
+      status.classList.remove("status-error");
+      status.textContent = response.message || "השאלה דורשת הבהרה נוספת. נסו לנסח אותה מחדש או השתמשו בסינון הידני למטה.";
+      hasDisplayedResults = false;
+    } catch (error) {
+      if (!isCurrentRequest(token)) return;
+      askStatus.textContent = "";
+      handleRequestFailure(error);
     }
   }
 
@@ -371,18 +523,34 @@
   function init() {
     loadCoverage();
 
+    byId("ask-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitAsk(byId("ask-question").value.trim());
+    });
+
+    for (const button of document.querySelectorAll(".example-question")) {
+      button.addEventListener("click", () => {
+        byId("ask-question").value = button.dataset.question;
+        byId("ask-question").focus();
+      });
+    }
+
     byId("filters-form").addEventListener("submit", (event) => {
       event.preventDefault();
       submitFilters(readFilters());
     });
 
     byId("clear-filters").addEventListener("click", () => {
+      beginRequest();
       byId("filters-form").reset();
+      resetInterpretationAndSummary();
       byId("results-content").hidden = true;
+      byId("stale-results-notice").hidden = true;
+      hasDisplayedResults = false;
       const status = byId("results-status");
       status.hidden = false;
       status.classList.remove("status-error");
-      status.textContent = "בחרו סינון ולחצו \"חפש\" כדי לראות תוצאות.";
+      status.textContent = "בחרו סינון או שאלו שאלה כדי לראות תוצאות.";
     });
 
     byId("deal-lookup-form").addEventListener("submit", (event) => {
