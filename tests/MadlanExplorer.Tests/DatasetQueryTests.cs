@@ -33,6 +33,8 @@ public class DatasetQueryTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.Equal(["D100027"], result.ContributorDealIds);
         Assert.Equal(["D100027"], result.PriceContributorDealIds);
         Assert.Equal(["D100027"], result.PricePerSqmContributorDealIds);
+        Assert.Contains("price_metric_has_fewer_than_five_contributors", result.Warnings);
+        Assert.Contains("price_per_sqm_metric_has_fewer_than_five_contributors", result.Warnings);
     }
 
     [Fact]
@@ -58,6 +60,17 @@ public class DatasetQueryTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public void Query_limits_evidence_to_the_default_page_size()
+    {
+        var result = Query(new DealFilters());
+
+        Assert.True(result.HasMoreEvidence);
+        Assert.Equal(100, result.ContributorDealIds.Count);
+        Assert.Equal(516, result.TransactionCount);
+        Assert.DoesNotContain("D100017", result.ContributorDealIds);
+    }
+
+    [Fact]
     public void Query_rejects_invalid_filter_ranges()
     {
         Assert.Throws<ArgumentException>(() => Query(new DealFilters { MinimumRooms = 5, MaximumRooms = 4 }));
@@ -67,6 +80,6 @@ public class DatasetQueryTests : IClassFixture<WebApplicationFactory<Program>>
     private DealQueryResult Query(DealFilters filters)
     {
         using var scope = _factory.Services.CreateScope();
-        return scope.ServiceProvider.GetRequiredService<DatasetStore>().ExecuteQuery(filters);
+        return scope.ServiceProvider.GetRequiredService<QueryService>().Query(filters);
     }
 }
