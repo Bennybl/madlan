@@ -38,6 +38,15 @@ public class ResultVerificationService
             };
         }
 
+        if (result.Warnings.Any(warning => candidate.Summary.Contains(warning, StringComparison.Ordinal)))
+        {
+            return new ResultVerificationOutput
+            {
+                Outcome = "rejected",
+                Message = "The candidate summary includes a raw warning code instead of a plain-language explanation."
+            };
+        }
+
         var request = new LlmRequest
         {
             Stage = LlmStage.ResultVerification,

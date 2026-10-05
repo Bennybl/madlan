@@ -71,6 +71,31 @@ public class ResultVerificationServiceTests
     }
 
     [Fact]
+    public async Task Verify_rejects_without_calling_the_model_when_the_candidate_includes_a_raw_warning_code()
+    {
+        var provider = new FakeLlmProvider();
+        var service = CreateService(provider);
+        var result = new DealQueryResult
+        {
+            TransactionCount = 1,
+            ContributorDealIds = ["D100027"],
+            PriceContributorDealIds = ["D100027"],
+            PricePerSqmContributorDealIds = ["D100027"],
+            Warnings = ["supplied_price_per_sqm_mismatch"]
+        };
+        var candidate = new ResultSummaryOutput
+        {
+            Summary = "נמצאה עסקה אחת. אזהרות: supplied_price_per_sqm_mismatch.",
+            ReferencedDealIds = ["D100027"]
+        };
+
+        var output = await service.VerifyAsync("שאלה", new DealFilters(), "hash-1", result, candidate, CancellationToken.None);
+
+        Assert.Equal("rejected", output.Outcome);
+        Assert.Empty(provider.Requests);
+    }
+
+    [Fact]
     public async Task Verify_rejects_malformed_output()
     {
         var provider = new FakeLlmProvider();

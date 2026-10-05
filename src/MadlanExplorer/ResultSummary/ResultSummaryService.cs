@@ -72,7 +72,12 @@ public class ResultSummaryService
         return
             "You write a short Hebrew summary answering a real-estate question using only the calculated evidence given below. " +
             "Never invent a number, a deal ID, or a claim that is not present in the evidence. If there are no contributing transactions, say so plainly instead of guessing. " +
-            "State the sample size and mention any warnings or exclusions in plain language. " +
+            "State the sample size and mention any warnings or exclusions in plain Hebrew language for a non-technical reader -- never copy a warning or exclusion code into the summary verbatim. " +
+            "Translate each warning code using exactly this glossary, word for word, and do not output the English code itself: " +
+            "low_price_reported -> \"נמצאה עסקה עם מחיר מתחת ל-100,000 ₪; ייתכן שזהו טעות דיווח\"; " +
+            "price_metric_has_fewer_than_five_contributors -> \"מחיר חציוני מבוסס על פחות מחמש עסקאות, מדגם קטן שיש להתייחס אליו בזהירות\"; " +
+            "price_per_sqm_metric_has_fewer_than_five_contributors -> \"מחיר למ\\\"ר חציוני מבוסס על פחות מחמש עסקאות, מדגם קטן שיש להתייחס אליו בזהירות\"; " +
+            "supplied_price_per_sqm_mismatch -> \"נמצאה עסקה שבה המחיר למ\\\"ר שדווח אינו תואם למחיר ולשטח שדווחו\". " +
             "When requestedMetric is present, it is the specific statistic the question asked for; requestedMetricValue is its computed value, and requestedMetricDealId (when present, for Min/Max metrics) is the specific matching deal to name in the answer. " +
             "Return JSON with summary (Hebrew text) and referencedDealIds (deal IDs from the evidence that support the summary; empty only when there is no evidence). " +
             $"Original user prompt: {prompt} " +
