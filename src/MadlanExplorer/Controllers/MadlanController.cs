@@ -42,4 +42,49 @@ public class MadlanController : ControllerBase
             });
         }
     }
+
+    [HttpGet("dataset")]
+    public ActionResult<DatasetSummaryResponse> Dataset()
+    {
+        return Ok(_applicationService.GetDatasetSummary());
+    }
+
+    [HttpPost("query")]
+    public ActionResult<ManualQueryResponse> Query([FromBody] DealFilters? filters)
+    {
+        try
+        {
+            var response = _applicationService.Query(filters ?? new DealFilters());
+            _logger.LogInformation(
+                "Received manual filter query {RequestId}",
+                HttpContext.TraceIdentifier);
+            return Ok(response);
+        }
+        catch (ArgumentException)
+        {
+            return BadRequest(new ApiErrorResponse
+            {
+                Code = "invalid_filters",
+                Message = _messages.InvalidFilters,
+                RequestId = HttpContext.TraceIdentifier
+            });
+        }
+    }
+
+    [HttpGet("deals/{dealId}")]
+    public ActionResult<DealDetail> Deal(string dealId)
+    {
+        var detail = _applicationService.GetDeal(dealId);
+        if (detail is null)
+        {
+            return NotFound(new ApiErrorResponse
+            {
+                Code = "deal_not_found",
+                Message = _messages.DealNotFound,
+                RequestId = HttpContext.TraceIdentifier
+            });
+        }
+
+        return Ok(detail);
+    }
 }

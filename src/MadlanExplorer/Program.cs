@@ -60,6 +60,8 @@ public static class Application
         }));
 
         app.MapGet("/healthz", () => Results.Ok(new HealthResponse("ok")));
+        app.UseDefaultFiles();
+        app.UseStaticFiles();
         app.MapControllers();
 
         return app;

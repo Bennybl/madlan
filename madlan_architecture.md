@@ -1,6 +1,6 @@
 # Madlan Deal Explorer - Architecture
 
-Status: revised on 2026-10-05. Steps 1-10 are merged; step 11 is under review. Later steps are planned work.
+Status: revised on 2026-10-05. Steps 1-11 are merged; step 12 is under review. Later steps are planned work.
 
 ## 1. Product
 
@@ -77,9 +77,14 @@ Keep the original prompt unchanged for both verifiers. Bind the workflow to the 
 | Endpoint | Purpose |
 |---|---|
 | `POST /api/ask` | Original question -> verified filters, deterministic results and verified summary |
+| `POST /api/query` | Manual filters -> deterministic results, no LLM involved |
+| `GET /api/dataset` | Dataset coverage (deal counts, dataset hash, available cities/neighborhoods/property types) for the manual filter UI |
+| `GET /api/deals/{dealId}` | Full report detail for one deal, including conflicting reports and locality-correction metadata, for evidence inspection |
 | `GET /healthz` | Application is running with its dataset loaded |
 
 The application service owns the `/api/ask` workflow. It calls the LLM stages, query service and repository without exposing those internal operations as public endpoints. Return bounded evidence in the final response.
+
+Step 7 originally narrowed the public surface to `/api/ask` alone. Step 12 reinstates `/api/query`, `/api/dataset` and `/api/deals/{dealId}` as thin, deterministic, LLM-free reads because the product brief and this document both require manual filters to keep working when the LLM is unavailable (section 1, section 5) — that guarantee has no meaning without a non-LLM request path for the UI to call. These three endpoints never touch `ILlmProvider`; they call `QueryService`/`IDealRepository` directly, the same way `MadlanApplicationService.AskAsync` does once a query is approved.
 
 Use configurable deadlines: initially 15 seconds per model call, 65 seconds for the complete server workflow, and 70 seconds for the browser. Propagate cancellation and stop remaining stages after a failure. No automatic retries. Invalid model output, refusal, timeout or outage produces a clear Hebrew message and leaves manual filtering available. Handle missing API credentials the same way. There is no application rate limiter, quota store or concurrency limiter.
 
@@ -88,6 +93,8 @@ Keep credentials on the server. Validate request fields and render untrusted tex
 ## 5. UI, deployment and delivery
 
 One RTL page contains a question input, examples, editable filters, three metric cards, a supporting-record table and expandable record details. Show sample sizes, warnings, data coverage and calculation definitions. Show the verified Hebrew summary above its evidence, and show original/normalized locality values and correction status in report details. Display progress through interpretation, verification and summary stages. Show empty/error states explicitly; a failed new question must not make old results look current. Ignore stale responses from earlier requests.
+
+Step 12 delivers the manual half of this page as plain HTML/CSS/JavaScript served from `wwwroot`: dataset coverage, editable filters, the three metric cards, warnings, a supporting-evidence table with expandable per-deal report detail (raw and normalized fields, locality correction metadata), a direct deal-ID lookup for inspecting a specific disputed or conflicting deal, and calculation-definition text. The natural-language question input, progress through the four LLM stages and the verified summary display are step 13's addition on top of this page, not a separate page.
 
 Deploy one Docker container to Render with the CSV included and the API key configured as a secret. No persistent disk is needed. Verify the actual hosting configuration and any charge before provisioning. Restarting recreates and reloads the in-memory SQLite database from the bundled CSV.
 

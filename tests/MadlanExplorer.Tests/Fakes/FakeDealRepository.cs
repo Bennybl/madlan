@@ -6,6 +6,8 @@ public class FakeDealRepository : IDealRepository
 {
     public DealQuery? ReceivedQuery { get; private set; }
     public DealQueryResult Result { get; set; } = new() { TransactionCount = 7 };
+    public DatasetFacts Facts { get; set; } = new();
+    public DealDetail? Deal { get; set; }
 
     public DealQueryResult Execute(DealQuery query)
     {
@@ -15,11 +17,11 @@ public class FakeDealRepository : IDealRepository
 
     public DatasetFacts GetDatasetFacts()
     {
-        return new DatasetFacts();
+        return Facts;
     }
 
     public DealDetail? GetDeal(string dealId)
     {
-        return null;
+        return Deal;
     }
 }
