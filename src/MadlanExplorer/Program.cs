@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Options;
+
 namespace MadlanExplorer;
 
 public class Program
@@ -18,19 +20,23 @@ public static class Application
         builder.Services.AddControllers();
         builder.Services.Configure<DatasetOptions>(builder.Configuration.GetSection(DatasetOptions.SectionName));
         builder.Services.Configure<LlmOptions>(builder.Configuration.GetSection(LlmOptions.SectionName));
+        builder.Services.Configure<MessagesOptions>(builder.Configuration.GetSection(MessagesOptions.SectionName));
         builder.Services.AddSingleton<IsraeliLocalityCatalog>();
         builder.Services.AddSingleton<DatasetStore>();
+        builder.Services.AddSingleton<IDatasetMetadataProvider>(sp => sp.GetRequiredService<DatasetStore>());
         builder.Services.AddSingleton<IDealRepository, SqliteDealRepository>();
         builder.Services.AddSingleton<QueryService>();
         builder.Services.AddHttpClient<ILlmProvider, GrokLlmProvider>();
         builder.Services.AddSingleton<QueryGenerationService>();
         builder.Services.AddSingleton<QueryVerificationService>();
         builder.Services.AddSingleton<ResultSummaryService>();
+        builder.Services.AddSingleton<ResultVerificationService>();
         builder.Services.AddSingleton<MadlanApplicationService>();
 
         var app = builder.Build();
         var localityCatalog = app.Services.GetRequiredService<IsraeliLocalityCatalog>();
         var datasetStore = app.Services.GetRequiredService<DatasetStore>();
+        var messages = app.Services.GetRequiredService<IOptions<MessagesOptions>>().Value;
 
         localityCatalog.Load();
         datasetStore.Load();
@@ -48,7 +54,7 @@ public static class Application
             await context.Response.WriteAsJsonAsync(new ApiErrorResponse
             {
                 Code = "internal_error",
-                Message = "אירעה שגיאה פנימית. נסו שוב מאוחר יותר.",
+                Message = messages.InternalError,
                 RequestId = context.TraceIdentifier
             });
         }));

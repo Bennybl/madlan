@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace MadlanExplorer.Controllers;
 
@@ -8,11 +9,16 @@ public class MadlanController : ControllerBase
 {
     private readonly MadlanApplicationService _applicationService;
     private readonly ILogger<MadlanController> _logger;
+    private readonly MessagesOptions _messages;
 
-    public MadlanController(MadlanApplicationService applicationService, ILogger<MadlanController> logger)
+    public MadlanController(
+        MadlanApplicationService applicationService,
+        ILogger<MadlanController> logger,
+        IOptions<MessagesOptions> messages)
     {
         _applicationService = applicationService;
         _logger = logger;
+        _messages = messages.Value;
     }
 
     [HttpPost("ask")]
@@ -31,7 +37,7 @@ public class MadlanController : ControllerBase
             return BadRequest(new ApiErrorResponse
             {
                 Code = "invalid_prompt",
-                Message = "יש לשלוח שאלה תקינה.",
+                Message = _messages.InvalidPrompt,
                 RequestId = HttpContext.TraceIdentifier
             });
         }

@@ -27,11 +27,7 @@ public class ResultSummaryService
             throw new InvalidOperationException("The result-summary model is not configured.");
         }
 
-        var knownDealIds = new HashSet<string>(
-            result.ContributorDealIds
-                .Concat(result.PriceContributorDealIds)
-                .Concat(result.PricePerSqmContributorDealIds),
-            StringComparer.Ordinal);
+        var knownDealIds = CalculatedEvidence.KnownDealIds(result);
 
         var request = new LlmRequest
         {
@@ -71,21 +67,7 @@ public class ResultSummaryService
 
     private static string BuildPrompt(string prompt, DealFilters filters, string datasetHash, DealQueryResult result)
     {
-        var evidence = new
-        {
-            datasetHash,
-            filters,
-            transactionCount = result.TransactionCount,
-            medianPriceNis = result.MedianPriceNis,
-            medianPricePerSqm = result.MedianPricePerSqm,
-            priceContributorCount = result.PriceContributorCount,
-            pricePerSqmContributorCount = result.PricePerSqmContributorCount,
-            contributorDealIds = result.ContributorDealIds,
-            hasMoreEvidence = result.HasMoreEvidence,
-            exclusionReasons = result.ExclusionReasons,
-            warnings = result.Warnings
-        };
-        var evidenceJson = JsonSerializer.Serialize(evidence);
+        var evidenceJson = CalculatedEvidence.ToJson(datasetHash, filters, result);
 
         return
             "You write a short Hebrew summary answering a real-estate question using only the calculated evidence given below. " +
