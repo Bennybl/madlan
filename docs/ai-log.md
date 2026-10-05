@@ -41,3 +41,7 @@ The user requested removal of the manually maintained city-alias map. City norma
 Step 3 adds the `Deals` table in the same SQLite startup transaction that imports `Reports`. A deal is `usable` when all of its normalized reports are identical; duplicate source rows remain in `Reports` and the deal points to the earliest retained report. A deal is `conflicting` when its normalized reports differ, has no canonical report, and remains fully inspectable through its reports. The normalized data now includes all business fields used for equality, including the reported source.
 
 Tests confirm the sample's 520 deal groups, six duplicate pairs, four documented conflicts, retained canonical-report rules, and identical outcomes after reversing CSV row order.
+
+## Commit: feat: filter deals and calculate results
+
+Step 4 adds a read-only query service that loads only usable canonical reports from SQLite, validates filters, applies filtering and calculates exact-decimal medians in C#. The first query tests exposed a fixed-name shared-memory SQLite collision when separate web-application test fixtures ran concurrently. Test execution is now sequential so each fixture releases its keeper connection before the next fixture starts.
