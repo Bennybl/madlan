@@ -1,32 +1,6 @@
 using System.Text.Json;
-using Microsoft.Data.Sqlite;
 
 namespace MadlanExplorer;
-
-public class DealFilters
-{
-    public string? City { get; init; }
-    public string? Neighborhood { get; init; }
-    public string? PropertyType { get; init; }
-    public decimal? MinimumRooms { get; init; }
-    public decimal? MaximumRooms { get; init; }
-    public DateOnly? StartDate { get; init; }
-    public DateOnly? EndDate { get; init; }
-}
-
-public class DealQueryResult
-{
-    public int TransactionCount { get; init; }
-    public decimal? MedianPriceNis { get; init; }
-    public decimal? MedianPricePerSqm { get; init; }
-    public int PriceContributorCount { get; init; }
-    public int PricePerSqmContributorCount { get; init; }
-    public IReadOnlyList<string> ContributorDealIds { get; init; } = [];
-    public IReadOnlyList<string> PriceContributorDealIds { get; init; } = [];
-    public IReadOnlyList<string> PricePerSqmContributorDealIds { get; init; } = [];
-    public IReadOnlyDictionary<string, int> ExclusionReasons { get; init; } = new Dictionary<string, int>();
-    public IReadOnlyList<string> Warnings { get; init; } = [];
-}
 
 public class DealQueryService
 {

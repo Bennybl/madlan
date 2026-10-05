@@ -45,3 +45,9 @@ Tests confirm the sample's 520 deal groups, six duplicate pairs, four documented
 ## Commit: feat: filter deals and calculate results
 
 Step 4 adds a read-only query service that loads only usable canonical reports from SQLite, validates filters, applies filtering and calculates exact-decimal medians in C#. The first query tests exposed a fixed-name shared-memory SQLite collision when separate web-application test fixtures ran concurrently. Test execution is now sequential so each fixture releases its keeper connection before the next fixture starts.
+
+## Review correction: separate step 4 DTO files
+
+The user requested one class or DTO per file. Moved DealFilters and DealQueryResult into their own matching files and removed an unused import. Query behavior is unchanged. The other step 4 test classes already have their own files.
+
+Validation: Docker test target passed all 12 tests.
