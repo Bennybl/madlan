@@ -209,6 +209,8 @@ public class MadlanApplicationServiceTests
             }
         });
 
+        var messages = Options.Create(new MessagesOptions { SummaryUnavailable = "summary-unavailable-message" });
+
         var queryService = new QueryService(repository);
         var generationService = new QueryGenerationService(provider, options, queryService);
         var verificationService = new QueryVerificationService(provider, options);
@@ -222,6 +224,7 @@ public class MadlanApplicationServiceTests
             summaryService,
             resultVerificationService,
             metadataProvider ?? new FakeDatasetMetadataProvider(),
-            options);
+            options,
+            messages);
     }
 }

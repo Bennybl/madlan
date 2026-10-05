@@ -4,8 +4,6 @@ namespace MadlanExplorer;
 
 public class MadlanApplicationService
 {
-    private const string SummaryUnavailableMessage = "סיכום מאומת אינו זמין כעת. מוצגות התוצאות המחושבות בלבד.";
-
     private readonly QueryGenerationService _queryGenerationService;
     private readonly QueryVerificationService _queryVerificationService;
     private readonly QueryService _queryService;
@@ -13,6 +11,7 @@ public class MadlanApplicationService
     private readonly ResultVerificationService _resultVerificationService;
     private readonly IDatasetMetadataProvider _datasetMetadataProvider;
     private readonly LlmOptions _options;
+    private readonly MessagesOptions _messages;
 
     public MadlanApplicationService(
         QueryGenerationService queryGenerationService,
@@ -21,7 +20,8 @@ public class MadlanApplicationService
         ResultSummaryService resultSummaryService,
         ResultVerificationService resultVerificationService,
         IDatasetMetadataProvider datasetMetadataProvider,
-        IOptions<LlmOptions> options)
+        IOptions<LlmOptions> options,
+        IOptions<MessagesOptions> messages)
     {
         _queryGenerationService = queryGenerationService;
         _queryVerificationService = queryVerificationService;
@@ -30,6 +30,7 @@ public class MadlanApplicationService
         _resultVerificationService = resultVerificationService;
         _datasetMetadataProvider = datasetMetadataProvider;
         _options = options.Value;
+        _messages = messages.Value;
     }
 
     public async Task<AskResponse> AskAsync(string prompt, CancellationToken cancellationToken)
@@ -72,12 +73,12 @@ public class MadlanApplicationService
             }
             else
             {
-                summaryUnavailableMessage = SummaryUnavailableMessage;
+                summaryUnavailableMessage = _messages.SummaryUnavailable;
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            summaryUnavailableMessage = SummaryUnavailableMessage;
+            summaryUnavailableMessage = _messages.SummaryUnavailable;
         }
 
         return new AskResponse
