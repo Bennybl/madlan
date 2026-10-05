@@ -69,3 +69,7 @@ The user clarified that the application must be designed as a production service
 Removed `DealQueryService`. `DatasetStore` now loads typed, indexed deal columns and executes fixed parameterized SQLite statements for filters, medians, counts, warnings and a bounded evidence page. The same request shape can use PostgreSQL-specific statement text in a production deployment without adding a repository or query builder.
 
 The step 5 build exposed a compile error in the earlier SQL median mapping: the conditional expressions combined `null` and `decimal` without an explicit nullable target type. Declaring both medians as `decimal?` fixes the build without changing query behavior.
+
+## Planning correction: provider-agnostic query repository
+
+The user clarified that query semantics belong in a provider-agnostic service and database translation belongs in a repository implementation. The architecture now defines `QueryService`, `IDealRepository`, `SqliteDealRepository` for the demo, and `PostgresDealRepository` for production. The plan adds a dedicated step 6 to introduce and test this boundary, then shifts later API, LLM, UI and deployment steps by one.

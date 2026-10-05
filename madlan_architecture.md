@@ -1,6 +1,6 @@
 # Madlan Deal Explorer - Architecture
 
-Status: revised on 2026-10-05. Steps 1-3 are merged; step 4 is under review. The additions below are planned work.
+Status: revised on 2026-10-05. Steps 1-4 are merged; step 5 is under review. Later steps are planned work.
 
 ## 1. Product
 
@@ -19,12 +19,13 @@ Keep three application components:
 | Component | Responsibility |
 |---|---|
 | Dataset loader | Read the CSV once at startup and populate in-memory SQLite with raw, normalized and queryable report/deal data |
-| HTTP endpoints | Execute fixed, parameterized SQL for filters, metrics and evidence pages |
+| Query service | Validate filters, construct provider-neutral query semantics, and call the deal repository |
+| Deal repository | Translate a provider-neutral query into parameterized database commands and return results/evidence pages |
 | Question workflow | Generate and verify structured filters, then summarize and verify calculated results using independently configured models |
 
-Flow: browser -> ASP.NET Core -> database. Natural-language questions pass through the verified question workflow described below. Each endpoint uses fixed, parameterized SQL statements; there is no query-service, repository or query-builder layer. Database filtering, conflict exclusion, aggregation, median calculation and pagination prevent request code from loading a full result set into application memory.
+Flow: browser -> ASP.NET Core -> query service -> deal repository -> database. Natural-language questions pass through the verified question workflow described below. The query service validates filters and builds a provider-neutral `DealQuery`; it never contains provider SQL. `IDealRepository` translates that query into fixed parameterized commands for its provider. Database filtering, conflict exclusion, aggregation, median calculation and pagination prevent request code from loading a full result set into application memory.
 
-Keep ordinary classes in one application project. Isolate provider calls behind one small interface so tests can supply stage responses. Keep workflow orchestration in an ordinary class; use a stage parameter and configuration instead of separate provider implementations for each model.
+Keep ordinary classes in one application project. `QueryService` depends only on `IDealRepository`; it does not know whether the implementation is SQLite or PostgreSQL. `SqliteDealRepository` supports the demo. `PostgresDealRepository` is the production implementation and owns PostgreSQL statement text, pooled connections and cursor syntax. Isolate LLM provider calls behind one small interface so tests can supply stage responses. Keep workflow orchestration in an ordinary class; use a stage parameter and configuration instead of separate provider implementations for each model.
 
 ## 3. Runtime data loading and correctness
 
@@ -32,7 +33,7 @@ Bundle the CSV with the application, outside `wwwroot`. At startup, create an in
 
 Use two tables: `Reports` (row ID, deal ID, original field JSON, normalized field JSON and quality flags) and `Deals` (deal ID, conflict status, canonical report ID and indexed query columns when usable). Retain every source row. Preserve JSON for evidence, but store filter and metric fields in typed columns: city, neighborhood, property type, rooms, date interval, price, size and supplied price per m². Add indexes matching the supported filters and evidence pagination. Keep dataset hash and coverage as application metadata.
 
-The demo uses shared in-memory SQLite because the supplied CSV has 530 rows. Treat it as a provider implementation, not a production capacity target. A production deployment uses PostgreSQL with typed `numeric`, `date` and text columns, the same fixed SQL semantics, migrations, pooled connections and database-side median/aggregate queries. Do not use SQLite JSON scans, C# full-result materialization or unbounded contributor ID lists for large data. Return aggregate values plus a paginated evidence page; retrieve more evidence by cursor. Keep provider-specific SQL in the endpoint that executes it, with separate SQLite and PostgreSQL statement text when the dialect differs.
+The demo uses shared in-memory SQLite because the supplied CSV has 530 rows. Treat it as a repository implementation, not a production capacity target. A production deployment uses PostgreSQL with typed `numeric`, `date` and text columns, the same query semantics, migrations, pooled connections and database-side median/aggregate queries. Do not use SQLite JSON scans, C# full-result materialization or unbounded contributor ID lists for large data. Return aggregate values plus a paginated evidence page; retrieve more evidence by cursor. Keep provider-specific SQL inside its repository implementation, with separate SQLite and PostgreSQL statement text when dialects differ.
 
 Use `Data Source=Madlan;Mode=Memory;Cache=Shared;Pooling=False`. Keep one keeper connection open for the application's lifetime and open separate short-lived connections for requests; do not share a connection object across concurrent requests. Dispose the keeper at shutdown. This preserves the database between requests without creating a disk file. See [Microsoft's in-memory SQLite guidance](https://learn.microsoft.com/en-us/dotnet/standard/data/sqlite/in-memory-databases).
 
@@ -82,7 +83,7 @@ Keep the original prompt unchanged for both verifiers. Bind the workflow to the 
 | `GET /api/deals/{id}` | Original reports and quality details |
 | `GET /healthz` | Application is running with its dataset loaded |
 
-Use the same query service for manual and interpreted searches. Return all matching evidence for this small dataset; the browser can paginate the table.
+Use the same query service and repository contract for manual and interpreted searches. Return a bounded evidence page and cursor; the browser requests later pages explicitly.
 
 Use configurable deadlines: initially 15 seconds per model call, 65 seconds for the complete server workflow, and 70 seconds for the browser. Propagate cancellation and stop remaining stages after a failure. No automatic retries. Invalid model output, refusal, timeout or outage produces a clear Hebrew message and leaves manual filtering available. Handle missing API credentials the same way. There is no application rate limiter, quota store or concurrency limiter.
 
