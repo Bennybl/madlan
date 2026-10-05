@@ -89,3 +89,7 @@ Implemented step 7 with read-only dataset, manual-query and deal-detail endpoint
 The user requested that the future LLM integration remain replaceable while starting with Grok. The architecture and implementation plan now require workflow code to depend on `ILlmProvider`; a later `GrokLlmProvider` will isolate Grok HTTP, authentication and response parsing behind that interface.
 
 The first API test compilation showed that the existing fake repository no longer implemented the two new evidence methods on `IDealRepository`. Adding inert fake implementations corrected the test double; no production behavior changed.
+
+## Commit: refactor: use Web API controllers
+
+The user requested conventional ASP.NET Core Web API structure. Replaced the minimal-API endpoint mapping class with separate dataset, query and deal controllers. The routes, response contracts, service/repository boundary, request IDs and error behavior remain unchanged.

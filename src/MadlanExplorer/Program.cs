@@ -15,6 +15,7 @@ public static class Application
     public static WebApplication Build(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
+        builder.Services.AddControllers();
         builder.Services.Configure<DatasetOptions>(builder.Configuration.GetSection(DatasetOptions.SectionName));
         builder.Services.AddSingleton<IsraeliLocalityCatalog>();
         builder.Services.AddSingleton<DatasetStore>();
@@ -48,7 +49,7 @@ public static class Application
         }));
 
         app.MapGet("/healthz", () => Results.Ok(new HealthResponse("ok")));
-        ApiEndpoints.Map(app);
+        app.MapControllers();
 
         return app;
     }
