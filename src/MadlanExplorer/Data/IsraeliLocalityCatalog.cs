@@ -52,12 +52,38 @@ public class IsraeliLocalityCatalog
 
     public string? FindCanonicalHebrewName(string name)
     {
-        if (_localitiesByName.TryGetValue(NormalizeName(name), out var locality))
+        var resolution = Resolve(name);
+        return resolution.OfficialCode.HasValue ? resolution.ResolvedValue : null;
+    }
+
+    public LocalityResolution Resolve(string value)
+    {
+        var original = value;
+        var normalized = NormalizeName(value);
+        if (_localitiesByName.TryGetValue(normalized, out var exact))
         {
-            return locality.NameHe;
+            return CreateResolution(original, exact, "exact");
         }
 
-        return null;
+        var candidates = _localities
+            .Select(locality => new { Locality = locality, Distance = Math.Min(EditDistance(normalized, NormalizeName(locality.NameHe)), string.IsNullOrWhiteSpace(locality.NameEn) ? int.MaxValue : EditDistance(normalized, NormalizeName(locality.NameEn)) ) })
+            .OrderBy(candidate => candidate.Distance)
+            .ThenBy(candidate => candidate.Locality.Code)
+            .Take(2)
+            .ToList();
+
+        var isWithinTypoThreshold = candidates.Count > 0 && candidates[0].Distance <= MaximumTypoDistance(normalized);
+        if (isWithinTypoThreshold && (candidates.Count == 1 || candidates[1].Distance - candidates[0].Distance >= 1))
+        {
+            return CreateResolution(original, candidates[0].Locality, "typo");
+        }
+
+        return new LocalityResolution
+        {
+            OriginalValue = original,
+            ResolvedValue = normalized,
+            Method = isWithinTypoThreshold && candidates.Count > 1 && candidates[0].Distance == candidates[1].Distance ? "ambiguous" : "unresolved"
+        };
     }
 
     public IsraeliLocality? FindByCode(int code) => _localities.FirstOrDefault(locality => locality.Code == code);
@@ -78,22 +104,29 @@ public class IsraeliLocalityCatalog
         return names;
     }
 
-    private static string NormalizeName(string value) => string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-}
+    private static LocalityResolution CreateResolution(string original, IsraeliLocality locality, string method) => new()
+    {
+        OfficialCode = locality.Code,
+        OriginalValue = original,
+        ResolvedValue = locality.NameHe,
+        Method = method
+    };
 
-public class IsraeliLocality
-{
-    public int Code { get; init; }
+    private static int MaximumTypoDistance(string name) => name.Length <= 5 ? 1 : 2;
 
-    public string NameHe { get; init; } = string.Empty;
+    private static int EditDistance(string first, string second)
+    {
+        var previous = Enumerable.Range(0, second.Length + 1).ToArray();
+        for (var i = 1; i <= first.Length; i++)
+        {
+            var current = new int[second.Length + 1];
+            current[0] = i;
+            for (var j = 1; j <= second.Length; j++) current[j] = Math.Min(Math.Min(current[j - 1] + 1, previous[j] + 1), previous[j - 1] + (first[i - 1] == second[j - 1] ? 0 : 1));
+            previous = current;
+        }
 
-    public string? NameEn { get; init; }
+        return previous[second.Length];
+    }
 
-    public int? DistrictCode { get; init; }
-
-    public string? DistrictNameHe { get; init; }
-
-    public int? RegionalCouncilCode { get; init; }
-
-    public string? RegionalCouncilNameHe { get; init; }
+    private static string NormalizeName(string value) => string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).Replace("-", string.Empty, StringComparison.Ordinal);
 }

@@ -13,6 +13,8 @@ public class NormalizedDealReport
 
     public string City { get; init; } = string.Empty;
 
+    public LocalityResolution Locality { get; init; } = new();
+
     public string? Neighborhood { get; init; }
 
     public string? Street { get; init; }
