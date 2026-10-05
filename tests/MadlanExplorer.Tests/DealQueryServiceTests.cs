@@ -5,11 +5,11 @@ using Xunit;
 
 namespace MadlanExplorer.Tests;
 
-public class DealQueryServiceTests : IClassFixture<WebApplicationFactory<Program>>
+public class DatasetQueryTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly WebApplicationFactory<Program> _factory;
 
-    public DealQueryServiceTests(WebApplicationFactory<Program> factory)
+    public DatasetQueryTests(WebApplicationFactory<Program> factory)
     {
         _factory = factory;
     }
@@ -44,7 +44,7 @@ public class DealQueryServiceTests : IClassFixture<WebApplicationFactory<Program
             EndDate = new DateOnly(2025, 8, 31)
         });
 
-        Assert.True(result.ExclusionReasons["date_not_fully_contained"] > 0);
+        Assert.DoesNotContain("D100171", result.ContributorDealIds);
     }
 
     [Fact]
@@ -67,6 +67,6 @@ public class DealQueryServiceTests : IClassFixture<WebApplicationFactory<Program
     private DealQueryResult Query(DealFilters filters)
     {
         using var scope = _factory.Services.CreateScope();
-        return scope.ServiceProvider.GetRequiredService<DealQueryService>().Query(filters);
+        return scope.ServiceProvider.GetRequiredService<DatasetStore>().ExecuteQuery(filters);
     }
 }

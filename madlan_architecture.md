@@ -18,11 +18,11 @@ Keep three application components:
 
 | Component | Responsibility |
 |---|---|
-| Dataset loader | Read the CSV once at startup and populate in-memory SQLite with raw and normalized reports |
-| Query service | Read reports from SQLite, apply filters, calculate metrics and return evidence and warnings |
+| Dataset loader | Read the CSV once at startup and populate in-memory SQLite with raw, normalized and queryable report/deal data |
+| HTTP endpoints | Execute fixed, parameterized SQL for filters, metrics and evidence pages |
 | Question workflow | Generate and verify structured filters, then summarize and verify calculated results using independently configured models |
 
-Flow: browser -> ASP.NET Core -> query service -> in-memory SQLite. Natural-language questions pass through the verified question workflow described below. Filtering, eligibility and decimal calculations run in C# over reports read from SQLite; this small dataset does not need a dynamic SQL query builder.
+Flow: browser -> ASP.NET Core -> database. Natural-language questions pass through the verified question workflow described below. Each endpoint uses fixed, parameterized SQL statements; there is no query-service, repository or query-builder layer. Database filtering, conflict exclusion, aggregation, median calculation and pagination prevent request code from loading a full result set into application memory.
 
 Keep ordinary classes in one application project. Isolate provider calls behind one small interface so tests can supply stage responses. Keep workflow orchestration in an ordinary class; use a stage parameter and configuration instead of separate provider implementations for each model.
 
@@ -30,7 +30,9 @@ Keep ordinary classes in one application project. Isolate provider calls behind 
 
 Bundle the CSV with the application, outside `wwwroot`. At startup, create an in-memory SQLite database, read and normalize the CSV, then insert all reports in one transaction before accepting requests. Keep the database read-only at the application level after loading. Changing the file requires restarting/redeploying the app; there is no reload service.
 
-Use two tables: `Reports` (row ID, deal ID, original field JSON, normalized field JSON and quality flags) and `Deals` (deal ID, conflict status and canonical report ID when usable). Retain every source row. Store decimal values exactly in the normalized JSON and parse them as C# decimal for calculations. Keep dataset hash and coverage as application metadata. Read from SQLite for each query; do not maintain a second long-lived copy of the dataset.
+Use two tables: `Reports` (row ID, deal ID, original field JSON, normalized field JSON and quality flags) and `Deals` (deal ID, conflict status, canonical report ID and indexed query columns when usable). Retain every source row. Preserve JSON for evidence, but store filter and metric fields in typed columns: city, neighborhood, property type, rooms, date interval, price, size and supplied price per m². Add indexes matching the supported filters and evidence pagination. Keep dataset hash and coverage as application metadata.
+
+The demo uses shared in-memory SQLite because the supplied CSV has 530 rows. Treat it as a provider implementation, not a production capacity target. A production deployment uses PostgreSQL with typed `numeric`, `date` and text columns, the same fixed SQL semantics, migrations, pooled connections and database-side median/aggregate queries. Do not use SQLite JSON scans, C# full-result materialization or unbounded contributor ID lists for large data. Return aggregate values plus a paginated evidence page; retrieve more evidence by cursor. Keep provider-specific SQL in the endpoint that executes it, with separate SQLite and PostgreSQL statement text when the dialect differs.
 
 Use `Data Source=Madlan;Mode=Memory;Cache=Shared;Pooling=False`. Keep one keeper connection open for the application's lifetime and open separate short-lived connections for requests; do not share a connection object across concurrent requests. Dispose the keeper at shutdown. This preserves the database between requests without creating a disk file. See [Microsoft's in-memory SQLite guidance](https://learn.microsoft.com/en-us/dotnet/standard/data/sqlite/in-memory-databases).
 
@@ -47,8 +49,8 @@ Apply these explicit rules:
 - Parse ISO, day/month/year, dot-separated dates and English month/year. Preserve month precision as an interval. Include a month-only date in a date-filtered query only if the whole month is inside the range; explain partial-overlap exclusions.
 - Support city, neighborhood, property type, room minimum/maximum and date range. Filters combine with AND; omitted filters impose no restriction. Four rooms means exactly four when minimum and maximum are four. Require clarification for an ambiguous neighborhood.
 - Count non-conflicting deals that definitely satisfy the filters. Missing filter values cannot be treated as matches.
-- Calculate median price from positive prices, and median price per m² from individual positive-price/positive-area ratios. Missing area excludes only the latter metric. Use C# decimal and round only for display, to the nearest shekel, midpoint away from zero.
-- Return null for an empty metric. Show each metric's contributing count and records, plus relevant exclusions and reasons.
+- Calculate median price from positive prices, and median price per m² from individual positive-price/positive-area ratios in database SQL. Missing area excludes only the latter metric. Use `numeric` in PostgreSQL and database-side rounding only for display, to the nearest shekel, midpoint away from zero.
+- Return null for an empty metric. Show each metric's contributing count and a paginated evidence page, plus relevant exclusions and reasons.
 - Preserve the supplied price per m² and flag differences greater than max(NIS 1, 1% of the computed ratio).
 - Flag positive prices below NIS 100,000 but keep them eligible. Exclude zero/negative prices from price metrics. Warn when a metric has fewer than five contributors. These warning thresholds are documented heuristics.
 

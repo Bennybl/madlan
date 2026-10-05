@@ -10,6 +10,7 @@ public class DealQueryResult
     public IReadOnlyList<string> ContributorDealIds { get; init; } = [];
     public IReadOnlyList<string> PriceContributorDealIds { get; init; } = [];
     public IReadOnlyList<string> PricePerSqmContributorDealIds { get; init; } = [];
+    public bool HasMoreEvidence { get; init; }
     public IReadOnlyDictionary<string, int> ExclusionReasons { get; init; } = new Dictionary<string, int>();
     public IReadOnlyList<string> Warnings { get; init; } = [];
 }

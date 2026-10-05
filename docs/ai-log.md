@@ -59,3 +59,11 @@ The user requested architecture and plan coverage for locality typo handling, pr
 ## Review correction: extract query warnings and name the contributor threshold
 
 The user requested that warning construction move out of `Query` and that the metric contributor threshold be configurable in code. `GetWarnings` now owns warning construction and `MinimumMetricContributorCount` replaces the literal `5`. Behavior is unchanged.
+
+## Review correction: production-scale database query path
+
+The user clarified that the application must be designed as a production service even though this demo uses in-memory SQLite. The architecture and implementation plan now require fixed, parameterized database SQL over typed indexed columns, database-side aggregates and bounded evidence pages. They explicitly prohibit a query service, repository or query builder. The existing C# materializing query implementation is being replaced before PR approval.
+
+## Review correction: execute queries in SQLite
+
+Removed `DealQueryService`. `DatasetStore` now loads typed, indexed deal columns and executes fixed parameterized SQLite statements for filters, medians, counts, warnings and a bounded evidence page. The same request shape can use PostgreSQL-specific statement text in a production deployment without adding a repository or query builder.

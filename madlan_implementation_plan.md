@@ -34,11 +34,11 @@ The application loads the supplied CSV into in-memory SQLite once at startup. Th
 
 ## 4. Implement filters and calculated results
 
-**Change:** Read reports/deals from SQLite and pass typed values to pure C# filtering and calculation functions. Add shared filter validation. Return transaction count, median price, median per-deal price/m², metric sample sizes, contributor IDs and exclusion reasons. Implement date containment, missing-value eligibility and the architecture's warning/rounding rules. Use parameterized SQL for lookups; no ORM or generated SQL.
+**Change:** Add typed query columns and indexes to the demo SQLite schema. Execute fixed, parameterized SQL directly from the request path: filtering, conflict exclusion, counts, medians, warnings and evidence pagination stay in the database. Add shared filter validation. Return transaction count, median price, median per-deal price/m², metric sample sizes, a bounded evidence page/cursor and exclusion reasons. Implement date containment, missing-value eligibility and the architecture's warning/rounding rules. Do not add a query service, repository or query builder. Keep SQLite statement text separate from the planned PostgreSQL production statements where dialects differ.
 
 **Verify:** Hand-check odd/even medians, empty results, missing area, zero price, low-price warning and partial-month overlap. Regression: Holon/apartment/exactly four rooms/2025 returns D100027 only, with NIS 3,826,000 and NIS 38,260/m².
 
-**Done when:** Every metric is reproducible from its returned records, independent of HTTP and the LLM.
+**Done when:** Every metric is reproducible from its paginated evidence and SQL statement, independent of the LLM; request memory does not grow with matched-row count.
 
 ## 5. Resolve locality typos and preserve normalization evidence
 
