@@ -15,7 +15,7 @@ public class QueryVerificationServiceTests
         var service = CreateService(provider);
         const string prompt = "מה מחיר דירת ארבעה חדרים בחולון?";
 
-        var result = await service.VerifyAsync(prompt, new DealFilters { MinimumRooms = 4, MaximumRooms = 4 }, QueryMetric.TransactionCount, CancellationToken.None);
+        var result = await service.VerifyAsync(prompt, new DealFilters { MinimumRooms = 4, MaximumRooms = 4 }, [], CancellationToken.None);
 
         Assert.Equal("approved", result.Outcome);
         Assert.Equal(LlmStage.QueryVerification, provider.Request?.Stage);
@@ -29,7 +29,7 @@ public class QueryVerificationServiceTests
         provider.SetContent(LlmStage.QueryVerification, """{"outcome":"rejected","message":"The prompt asked for Holon but no city filter was proposed."}""");
         var service = CreateService(provider);
 
-        var result = await service.VerifyAsync("דירות בחולון", new DealFilters(), QueryMetric.TransactionCount, CancellationToken.None);
+        var result = await service.VerifyAsync("דירות בחולון", new DealFilters(), [], CancellationToken.None);
 
         Assert.Equal("rejected", result.Outcome);
         Assert.NotNull(result.Message);
@@ -42,10 +42,28 @@ public class QueryVerificationServiceTests
         provider.SetContent(LlmStage.QueryVerification, """{"outcome":"clarification","message":"Which neighborhood did you mean?"}""");
         var service = CreateService(provider);
 
-        var result = await service.VerifyAsync("דירות ברובע המרכזי", new DealFilters(), QueryMetric.TransactionCount, CancellationToken.None);
+        var result = await service.VerifyAsync("דירות ברובע המרכזי", new DealFilters(), [], CancellationToken.None);
 
         Assert.Equal("clarification", result.Outcome);
         Assert.Equal("Which neighborhood did you mean?", result.Message);
+    }
+
+    [Fact]
+    public async Task Verify_approves_a_proposal_with_multiple_requested_metrics()
+    {
+        var provider = new FakeLlmProvider();
+        provider.SetContent(LlmStage.QueryVerification, """{"outcome":"approved"}""");
+        var service = CreateService(provider);
+
+        var result = await service.VerifyAsync(
+            "מה המחיר הממוצע והחציוני בחולון?",
+            new DealFilters { City = "חולון" },
+            [QueryMetric.AveragePrice, QueryMetric.MedianPrice],
+            CancellationToken.None);
+
+        Assert.Equal("approved", result.Outcome);
+        Assert.Contains("AveragePrice", provider.Request?.Prompt);
+        Assert.Contains("MedianPrice", provider.Request?.Prompt);
     }
 
     [Fact]
@@ -55,7 +73,7 @@ public class QueryVerificationServiceTests
         provider.SetContent(LlmStage.QueryVerification, "not-json");
         var service = CreateService(provider);
 
-        await Assert.ThrowsAsync<JsonException>(() => service.VerifyAsync("test", new DealFilters(), QueryMetric.TransactionCount, CancellationToken.None));
+        await Assert.ThrowsAsync<JsonException>(() => service.VerifyAsync("test", new DealFilters(), [], CancellationToken.None));
     }
 
     [Fact]
@@ -65,7 +83,7 @@ public class QueryVerificationServiceTests
         provider.SetContent(LlmStage.QueryVerification, """{"outcome":"maybe"}""");
         var service = CreateService(provider);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.VerifyAsync("test", new DealFilters(), QueryMetric.TransactionCount, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.VerifyAsync("test", new DealFilters(), [], CancellationToken.None));
     }
 
     [Fact]
@@ -75,7 +93,7 @@ public class QueryVerificationServiceTests
         var options = Options.Create(new LlmOptions());
         var service = new QueryVerificationService(provider, options);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.VerifyAsync("test", new DealFilters(), QueryMetric.TransactionCount, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.VerifyAsync("test", new DealFilters(), [], CancellationToken.None));
         Assert.Empty(provider.Requests);
     }
 

@@ -10,7 +10,7 @@ public class AskResponse
 
     public DealFilters? Filters { get; init; }
 
-    public QueryMetric? Metric { get; init; }
+    public IReadOnlyList<QueryMetric>? Metrics { get; init; }
 
     public DealQueryResult? Result { get; init; }
 

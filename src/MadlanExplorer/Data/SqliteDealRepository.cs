@@ -94,11 +94,16 @@ public class SqliteDealRepository : IDealRepository
         reader.Dispose();
         var evidence = ReadEvidence(connection, filters, evidencePageSize);
 
-        decimal? requestedMetricValue = null;
-        string? requestedMetricDealId = null;
-        if (query.Metric != QueryMetric.TransactionCount)
+        var requestedMetrics = new List<RequestedMetricResult>();
+        foreach (var metric in query.Metrics.Distinct())
         {
-            (requestedMetricValue, requestedMetricDealId) = ComputeRequestedMetric(connection, filters, query.Metric);
+            if (metric == QueryMetric.TransactionCount)
+            {
+                continue;
+            }
+
+            var (value, dealId) = ComputeRequestedMetric(connection, filters, metric);
+            requestedMetrics.Add(new RequestedMetricResult { Metric = metric, Value = value, DealId = dealId });
         }
 
         return new DealQueryResult
@@ -113,9 +118,7 @@ public class SqliteDealRepository : IDealRepository
             PricePerSqmContributorDealIds = evidence.DealIds,
             HasMoreEvidence = evidence.HasMore,
             Warnings = warnings,
-            RequestedMetric = query.Metric == QueryMetric.TransactionCount ? null : query.Metric,
-            RequestedMetricValue = requestedMetricValue,
-            RequestedMetricDealId = requestedMetricDealId
+            RequestedMetrics = requestedMetrics
         };
     }
 

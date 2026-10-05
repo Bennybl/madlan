@@ -30,25 +30,25 @@ public class QueryServiceTests
     }
 
     [Fact]
-    public void Query_defaults_to_transaction_count_when_no_metric_is_specified()
+    public void Query_defaults_to_no_requested_metrics_when_none_are_specified()
     {
         var repository = new FakeDealRepository();
         var service = new QueryService(repository);
 
         service.Query(new DealFilters());
 
-        Assert.Equal(QueryMetric.TransactionCount, repository.ReceivedQuery?.Metric);
+        Assert.Empty(repository.ReceivedQuery?.Metrics ?? []);
     }
 
     [Fact]
-    public void Query_passes_the_requested_metric_to_the_repository()
+    public void Query_passes_the_requested_metrics_to_the_repository()
     {
         var repository = new FakeDealRepository();
         var service = new QueryService(repository);
 
-        service.Query(new DealFilters(), QueryMetric.MaxPrice);
+        service.Query(new DealFilters(), [QueryMetric.MaxPrice, QueryMetric.MedianPrice]);
 
-        Assert.Equal(QueryMetric.MaxPrice, repository.ReceivedQuery?.Metric);
+        Assert.Equal([QueryMetric.MaxPrice, QueryMetric.MedianPrice], repository.ReceivedQuery?.Metrics);
     }
 
     [Fact]

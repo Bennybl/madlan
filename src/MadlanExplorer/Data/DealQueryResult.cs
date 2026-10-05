@@ -24,9 +24,5 @@ public class DealQueryResult
 
     public IReadOnlyList<string> Warnings { get; init; } = [];
 
-    public QueryMetric? RequestedMetric { get; init; }
-
-    public decimal? RequestedMetricValue { get; init; }
-
-    public string? RequestedMetricDealId { get; init; }
+    public IReadOnlyList<RequestedMetricResult> RequestedMetrics { get; init; } = [];
 }

@@ -9,10 +9,10 @@ public class QueryService
         _dealRepository = dealRepository;
     }
 
-    public DealQueryResult Query(DealFilters filters, QueryMetric metric = QueryMetric.TransactionCount)
+    public DealQueryResult Query(DealFilters filters, IReadOnlyList<QueryMetric>? metrics = null)
     {
         ValidateFilters(filters);
-        return _dealRepository.Execute(new DealQuery { Filters = filters, Metric = metric });
+        return _dealRepository.Execute(new DealQuery { Filters = filters, Metrics = metrics ?? [] });
     }
 
     public void Validate(DealFilters filters) => ValidateFilters(filters);

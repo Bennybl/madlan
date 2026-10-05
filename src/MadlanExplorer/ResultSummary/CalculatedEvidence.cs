@@ -25,9 +25,7 @@ public static class CalculatedEvidence
             hasMoreEvidence = result.HasMoreEvidence,
             exclusionReasons = result.ExclusionReasons,
             warnings = result.Warnings,
-            requestedMetric = result.RequestedMetric,
-            requestedMetricValue = result.RequestedMetricValue,
-            requestedMetricDealId = result.RequestedMetricDealId
+            requestedMetrics = result.RequestedMetrics.Select(m => new { metric = m.Metric, value = m.Value, dealId = m.DealId })
         };
 
         return JsonSerializer.Serialize(evidence, SerializerOptions);
@@ -41,9 +39,12 @@ public static class CalculatedEvidence
                 .Concat(result.PricePerSqmContributorDealIds),
             StringComparer.Ordinal);
 
-        if (result.RequestedMetricDealId is not null)
+        foreach (var metricResult in result.RequestedMetrics)
         {
-            dealIds.Add(result.RequestedMetricDealId);
+            if (metricResult.DealId is not null)
+            {
+                dealIds.Add(metricResult.DealId);
+            }
         }
 
         return dealIds;

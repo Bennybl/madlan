@@ -6,5 +6,5 @@ public class DealQuery
 
     public int EvidencePageSize { get; init; } = 100;
 
-    public QueryMetric Metric { get; init; } = QueryMetric.TransactionCount;
+    public IReadOnlyList<QueryMetric> Metrics { get; init; } = [];
 }

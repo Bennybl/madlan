@@ -45,6 +45,38 @@ public class QueryGenerationServiceTests
     }
 
     [Fact]
+    public async Task Generate_returns_every_metric_the_question_asked_for()
+    {
+        var provider = new FakeLlmProvider { Content = """{"outcome":"query","filters":{"city":"חולון"},"metrics":["AveragePrice","MedianPrice"]}""" };
+        var service = CreateService(provider);
+
+        var response = await service.GenerateAsync("מה המחיר הממוצע והחציוני בחולון?", CancellationToken.None);
+
+        Assert.Equal("query", response.Status);
+        Assert.Equal([QueryMetric.AveragePrice, QueryMetric.MedianPrice], response.Metrics);
+    }
+
+    [Fact]
+    public async Task Generate_defaults_to_no_extra_metrics_when_none_are_specified()
+    {
+        var provider = new FakeLlmProvider();
+        var service = CreateService(provider);
+
+        var response = await service.GenerateAsync("test", CancellationToken.None);
+
+        Assert.Empty(response.Metrics ?? []);
+    }
+
+    [Fact]
+    public async Task Generate_rejects_an_unsupported_metric_name()
+    {
+        var provider = new FakeLlmProvider { Content = """{"outcome":"query","filters":{},"metrics":["NotARealMetric"]}""" };
+        var service = CreateService(provider);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.GenerateAsync("test", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Generate_leaves_an_unresolved_city_unchanged()
     {
         var provider = new FakeLlmProvider { Content = """{"outcome":"query","filters":{"city":"עיר שלא קיימת בשום קטלוג"}}""" };

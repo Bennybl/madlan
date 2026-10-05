@@ -81,8 +81,8 @@ public class MadlanApplicationService
             return generated;
         }
 
-        var metric = generated.Metric ?? QueryMetric.TransactionCount;
-        var verification = await _queryVerificationService.VerifyAsync(prompt, generated.Filters, metric, workflowToken);
+        var metrics = generated.Metrics ?? [];
+        var verification = await _queryVerificationService.VerifyAsync(prompt, generated.Filters, metrics, workflowToken);
         if (verification.Outcome != "approved")
         {
             return new AskResponse
@@ -94,7 +94,7 @@ public class MadlanApplicationService
         }
 
         var filters = generated.Filters;
-        var result = _queryService.Query(filters, metric);
+        var result = _queryService.Query(filters, metrics);
         var datasetHash = _datasetMetadataProvider.Metadata.FileHash;
 
         string? summary = null;
@@ -123,7 +123,7 @@ public class MadlanApplicationService
             Prompt = prompt,
             Status = "query",
             Filters = filters,
-            Metric = metric == QueryMetric.TransactionCount ? null : metric,
+            Metrics = metrics,
             Result = result,
             DatasetHash = datasetHash,
             Summary = summary,

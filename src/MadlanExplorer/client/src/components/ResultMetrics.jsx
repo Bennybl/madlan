@@ -9,7 +9,8 @@ export default function ResultMetrics({ result }) {
     return <p>לא נמצאו עסקאות התואמות לסינון שנבחר. נסו להרחיב את טווח החיפוש.</p>;
   }
 
-  const isSingleDeal = result.requestedMetric && SINGLE_DEAL_METRICS.has(result.requestedMetric);
+  const requestedMetrics = result.requestedMetrics || [];
+  const singleDealMetrics = requestedMetrics.filter((m) => SINGLE_DEAL_METRICS.has(m.metric) && m.dealId);
 
   return (
     <div className="result-metrics">
@@ -28,19 +29,24 @@ export default function ResultMetrics({ result }) {
           <p className="metric-value">{formatCurrency(result.medianPricePerSqm)}</p>
           <p className="metric-count">מבוסס על {NUMBER_FORMAT.format(result.pricePerSqmContributorCount)} עסקאות עם מחיר ושטח תקינים</p>
         </article>
-        {result.requestedMetric && (
-          <article className="metric-card">
-            <h3>{METRIC_LABELS[result.requestedMetric] || result.requestedMetric}</h3>
-            <p className="metric-value">{formatMetricValue(result.requestedMetric, result.requestedMetricValue)}</p>
-            {result.requestedMetricDealId && <p className="metric-count">עסקה: {result.requestedMetricDealId}</p>}
+        {requestedMetrics.map((metricResult) => (
+          <article className="metric-card" key={metricResult.metric}>
+            <h3>{METRIC_LABELS[metricResult.metric] || metricResult.metric}</h3>
+            <p className="metric-value">{formatMetricValue(metricResult.metric, metricResult.value)}</p>
+            {metricResult.dealId && <p className="metric-count">עסקה: {metricResult.dealId}</p>}
           </article>
-        )}
+        ))}
       </div>
 
-      {isSingleDeal && result.requestedMetricDealId && (
+      {singleDealMetrics.length > 0 && (
         <div className="single-deal-detail">
           <h4>פרטי העסקה המבוקשת</h4>
-          <DealDetailCard dealId={result.requestedMetricDealId} />
+          {singleDealMetrics.map((metricResult) => (
+            <div key={metricResult.metric}>
+              <p className="hint">{METRIC_LABELS[metricResult.metric] || metricResult.metric}</p>
+              <DealDetailCard dealId={metricResult.dealId} />
+            </div>
+          ))}
         </div>
       )}
 

@@ -8,5 +8,5 @@ public class QueryGenerationOutput
 
     public DealFilters? Filters { get; init; }
 
-    public string? Metric { get; init; }
+    public IReadOnlyList<string>? Metrics { get; init; }
 }
