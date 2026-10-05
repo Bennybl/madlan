@@ -66,7 +66,13 @@ public class IsraeliLocalityCatalog
         }
 
         var candidates = _localities
-            .Select(locality => new { Locality = locality, Distance = Math.Min(EditDistance(normalized, NormalizeName(locality.NameHe)), string.IsNullOrWhiteSpace(locality.NameEn) ? int.MaxValue : EditDistance(normalized, NormalizeName(locality.NameEn)) ) })
+            .Select(locality => new
+            {
+                Locality = locality,
+                Distance = Math.Min(
+                    EditDistance(normalized, NormalizeName(locality.NameHe)),
+                    string.IsNullOrWhiteSpace(locality.NameEn) ? int.MaxValue : EditDistance(normalized, NormalizeName(locality.NameEn)))
+            })
             .OrderBy(candidate => candidate.Distance)
             .ThenBy(candidate => candidate.Locality.Code)
             .Take(2)
@@ -121,12 +127,21 @@ public class IsraeliLocalityCatalog
         {
             var current = new int[second.Length + 1];
             current[0] = i;
-            for (var j = 1; j <= second.Length; j++) current[j] = Math.Min(Math.Min(current[j - 1] + 1, previous[j] + 1), previous[j - 1] + (first[i - 1] == second[j - 1] ? 0 : 1));
+            for (var j = 1; j <= second.Length; j++)
+            {
+                var substitutionCost = first[i - 1] == second[j - 1] ? 0 : 1;
+                current[j] = Math.Min(Math.Min(current[j - 1] + 1, previous[j] + 1), previous[j - 1] + substitutionCost);
+            }
+
             previous = current;
         }
 
         return previous[second.Length];
     }
 
-    private static string NormalizeName(string value) => string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).Replace("-", string.Empty, StringComparison.Ordinal);
+    private static string NormalizeName(string value)
+    {
+        var withoutExtraWhitespace = string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return withoutExtraWhitespace.Replace("-", string.Empty, StringComparison.Ordinal);
+    }
 }

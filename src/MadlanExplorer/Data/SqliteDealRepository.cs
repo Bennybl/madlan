@@ -43,7 +43,13 @@ public class SqliteDealRepository : IDealRepository
                 (SELECT COUNT(*) FROM Prices),
                 (SELECT COUNT(*) FROM Ratios),
                 EXISTS (SELECT 1 FROM Prices WHERE Value < 100000),
-                EXISTS (SELECT 1 FROM Filtered WHERE PriceNis > 0 AND SizeSqm > 0 AND SuppliedPricePerSqm IS NOT NULL AND ABS(SuppliedPricePerSqm - (PriceNis / SizeSqm)) > MAX(1, (PriceNis / SizeSqm) * 0.01));
+                EXISTS (
+                    SELECT 1
+                    FROM Filtered
+                    WHERE PriceNis > 0
+                      AND SizeSqm > 0
+                      AND SuppliedPricePerSqm IS NOT NULL
+                      AND ABS(SuppliedPricePerSqm - (PriceNis / SizeSqm)) > MAX(1, (PriceNis / SizeSqm) * 0.01));
             """;
         AddFilterParameters(command, filters);
         using var reader = command.ExecuteReader();
@@ -54,10 +60,26 @@ public class SqliteDealRepository : IDealRepository
         var priceContributorCount = reader.GetInt32(3);
         var pricePerSqmContributorCount = reader.GetInt32(4);
         var warnings = new List<string>();
-        if (reader.GetInt64(5) == 1) warnings.Add("low_price_reported");
-        if (priceContributorCount < MinimumMetricContributorCount) warnings.Add("price_metric_has_fewer_than_five_contributors");
-        if (pricePerSqmContributorCount < MinimumMetricContributorCount) warnings.Add("price_per_sqm_metric_has_fewer_than_five_contributors");
-        if (reader.GetInt64(6) == 1) warnings.Add("supplied_price_per_sqm_mismatch");
+        if (reader.GetInt64(5) == 1)
+        {
+            warnings.Add("low_price_reported");
+        }
+
+        if (priceContributorCount < MinimumMetricContributorCount)
+        {
+            warnings.Add("price_metric_has_fewer_than_five_contributors");
+        }
+
+        if (pricePerSqmContributorCount < MinimumMetricContributorCount)
+        {
+            warnings.Add("price_per_sqm_metric_has_fewer_than_five_contributors");
+        }
+
+        if (reader.GetInt64(6) == 1)
+        {
+            warnings.Add("supplied_price_per_sqm_mismatch");
+        }
+
         reader.Dispose();
         var evidence = ReadEvidence(connection, filters, evidencePageSize);
         return new DealQueryResult
@@ -184,7 +206,11 @@ public class SqliteDealRepository : IDealRepository
         command.Parameters.AddWithValue("$limit", evidencePageSize + 1);
         using var reader = command.ExecuteReader();
         var dealIds = new List<string>();
-        while (reader.Read()) dealIds.Add(reader.GetString(0));
+        while (reader.Read())
+        {
+            dealIds.Add(reader.GetString(0));
+        }
+
         var hasMore = dealIds.Count > evidencePageSize;
         return (dealIds.Take(evidencePageSize).ToList(), hasMore);
     }
@@ -218,7 +244,4 @@ public class SqliteDealRepository : IDealRepository
 
         return values;
     }
-
 }
-
-

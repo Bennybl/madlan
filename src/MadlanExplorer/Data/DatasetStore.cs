@@ -206,7 +206,10 @@ public class DatasetStore : IDisposable
         var flags = new List<string>();
         var dealDate = NormalizeDate(fields["deal_date"], flags);
         var locality = _localityCatalog.Resolve(NormalizeText(fields["city"]));
-        if (locality.Method is "typo" or "ambiguous" or "unresolved") flags.Add($"city_{locality.Method}");
+        if (locality.Method is "typo" or "ambiguous" or "unresolved")
+        {
+            flags.Add($"city_{locality.Method}");
+        }
 
         var normalized = new NormalizedDealReport
         {
@@ -274,7 +277,10 @@ public class DatasetStore : IDisposable
         command.ExecuteNonQuery();
     }
 
-    private static string NormalizeText(string value) => string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    private static string NormalizeText(string value)
+    {
+        return string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
 
     private static string? NormalizeNullableText(string value)
     {
@@ -284,7 +290,9 @@ public class DatasetStore : IDisposable
 
     private static decimal? NormalizeDecimal(string value, string field, ICollection<string> flags)
     {
-        var normalized = NormalizeText(value).Replace("₪", string.Empty, StringComparison.Ordinal).Replace(",", string.Empty, StringComparison.Ordinal);
+        var normalized = NormalizeText(value)
+            .Replace("₪", string.Empty, StringComparison.Ordinal)
+            .Replace(",", string.Empty, StringComparison.Ordinal);
         if (string.IsNullOrEmpty(normalized))
         {
             return null;
@@ -343,5 +351,4 @@ public class DatasetStore : IDisposable
 
         return new NormalizedDate(null, null, "unknown");
     }
-
 }
