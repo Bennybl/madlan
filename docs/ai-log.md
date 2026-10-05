@@ -93,3 +93,7 @@ The first API test compilation showed that the existing fake repository no longe
 ## Commit: refactor: use Web API controllers
 
 The user requested conventional ASP.NET Core Web API structure. Replaced the minimal-API endpoint mapping class with separate dataset, query and deal controllers. The routes, response contracts, service/repository boundary, request IDs and error behavior remain unchanged.
+
+## Commit: refactor: use one controller and application service
+
+The user clarified that the API must use one controller that delegates to an application service. Replaced the three resource controllers with `MadlanController` and introduced `MadlanApplicationService`. It coordinates dataset, manual query and deal-detail requests; later LLM stages will be added to this service, while controllers remain HTTP-only.
