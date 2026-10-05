@@ -15,6 +15,8 @@ public class QueryService
         return _dealRepository.Execute(new DealQuery { Filters = filters });
     }
 
+    public void Validate(DealFilters filters) => ValidateFilters(filters);
+
     private static void ValidateFilters(DealFilters filters)
     {
         if (filters.MinimumRooms is < 0 || filters.MaximumRooms is < 0 || filters.MinimumRooms > filters.MaximumRooms)
