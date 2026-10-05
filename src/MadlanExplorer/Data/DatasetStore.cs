@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 
 namespace MadlanExplorer;
 
-public class DatasetStore : IDisposable
+public class DatasetStore : IDisposable, IDatasetMetadataProvider
 {
     private const int EvidencePageSize = 100;
     private const int MinimumMetricContributorCount = 5;

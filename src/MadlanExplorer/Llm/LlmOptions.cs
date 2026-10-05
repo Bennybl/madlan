@@ -12,5 +12,7 @@ public class LlmOptions
 
     public int TimeoutSeconds { get; set; } = 15;
 
+    public int ServerTimeoutSeconds { get; set; } = 65;
+
     public LlmModelsOptions Models { get; set; } = new();
 }
