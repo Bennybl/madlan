@@ -100,6 +100,14 @@ public class DatasetStore : IDisposable
                 QualityFlagsJson TEXT NOT NULL
             );
             CREATE INDEX IX_Reports_DealId ON Reports (DealId);
+
+            CREATE TABLE Deals (
+                DealId TEXT PRIMARY KEY,
+                ConflictStatus TEXT NOT NULL CHECK (ConflictStatus IN ('usable', 'conflicting')),
+                CanonicalReportId INTEGER NULL REFERENCES Reports (Id),
+                ReportCount INTEGER NOT NULL,
+                DistinctReportCount INTEGER NOT NULL
+            );
             """;
         command.ExecuteNonQuery();
     }
@@ -134,6 +142,7 @@ public class DatasetStore : IDisposable
             reportCount++;
         }
 
+        PopulateDeals(connection, transaction);
         transaction.Commit();
         Metadata = new DatasetMetadata
         {
@@ -190,9 +199,14 @@ public class DatasetStore : IDisposable
             DealId = NormalizeText(fields["deal_id"]),
             City = NormalizeCity(fields["city"]),
             Neighborhood = NormalizeNullableText(fields["neighborhood"]),
+            Street = NormalizeNullableText(fields["street"]),
             PropertyType = NormalizeText(fields["property_type"]),
             Rooms = NormalizeDecimal(fields["rooms"], "rooms", flags),
             SizeSqm = NormalizeDecimal(fields["size_sqm"], "size_sqm", flags),
+            Floor = NormalizeDecimal(fields["floor"], "floor", flags),
+            TotalFloors = NormalizeDecimal(fields["total_floors"], "total_floors", flags),
+            YearBuilt = NormalizeDecimal(fields["year_built"], "year_built", flags),
+            Condition = NormalizeNullableText(fields["condition"]),
             PriceNis = NormalizeDecimal(fields["price_nis"], "price_nis", flags),
             SuppliedPricePerSqm = NormalizeDecimal(fields["price_per_sqm"], "price_per_sqm", flags),
             HasElevator = NormalizeBoolean(fields["has_elevator"], "has_elevator", flags),
@@ -201,11 +215,35 @@ public class DatasetStore : IDisposable
             HasSafeRoom = NormalizeBoolean(fields["has_safe_room"], "has_safe_room", flags),
             DealDateStart = dealDate.Start,
             DealDateEnd = dealDate.End,
-            DealDatePrecision = dealDate.Precision
+            DealDatePrecision = dealDate.Precision,
+            Source = NormalizeText(fields["source"])
         };
 
         qualityFlags = flags;
         return normalized;
+    }
+
+    private static void PopulateDeals(SqliteConnection connection, SqliteTransaction transaction)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO Deals (
+                DealId,
+                ConflictStatus,
+                CanonicalReportId,
+                ReportCount,
+                DistinctReportCount)
+            SELECT
+                DealId,
+                CASE WHEN COUNT(DISTINCT NormalizedJson) = 1 THEN 'usable' ELSE 'conflicting' END,
+                CASE WHEN COUNT(DISTINCT NormalizedJson) = 1 THEN MIN(Id) ELSE NULL END,
+                COUNT(*),
+                COUNT(DISTINCT NormalizedJson)
+            FROM Reports
+            GROUP BY DealId;
+            """;
+        command.ExecuteNonQuery();
     }
 
     private string NormalizeCity(string value)

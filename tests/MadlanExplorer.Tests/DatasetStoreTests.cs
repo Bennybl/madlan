@@ -77,9 +77,58 @@ public class DatasetStoreTests
         Assert.Equal(530L, CountReports(secondConnection));
     }
 
-    private static DatasetStore CreateStore()
+    [Fact]
+    public void Load_groups_duplicate_and_conflicting_reports_without_losing_evidence()
     {
-        var dataFile = Path.Combine(AppContext.BaseDirectory, "data", "madlan_deals_sample.csv");
+        using var store = CreateStore();
+        store.Load();
+
+        using var connection = store.OpenConnection();
+
+        Assert.Equal(520L, ExecuteCount(connection, "SELECT COUNT(*) FROM Deals;"));
+        Assert.Equal(516L, ExecuteCount(connection, "SELECT COUNT(*) FROM Deals WHERE ConflictStatus = 'usable';"));
+        Assert.Equal(4L, ExecuteCount(connection, "SELECT COUNT(*) FROM Deals WHERE ConflictStatus = 'conflicting';"));
+        Assert.Equal(6L, ExecuteCount(connection, "SELECT COUNT(*) FROM Deals WHERE ReportCount = 2 AND DistinctReportCount = 1;"));
+        Assert.Equal(0L, ExecuteCount(connection, "SELECT COUNT(*) FROM Deals WHERE ConflictStatus = 'conflicting' AND CanonicalReportId IS NOT NULL;"));
+        Assert.Equal(6L, ExecuteCount(connection, "SELECT COUNT(*) FROM Deals WHERE ConflictStatus = 'usable' AND ReportCount = 2 AND CanonicalReportId IS NOT NULL;"));
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT DealId FROM Deals WHERE ConflictStatus = 'conflicting' ORDER BY DealId;";
+        using var reader = command.ExecuteReader();
+        var conflictingDealIds = new List<string>();
+        while (reader.Read())
+        {
+            conflictingDealIds.Add(reader.GetString(0));
+        }
+
+        Assert.Equal(["D100017", "D100032", "D100124", "D100303"], conflictingDealIds);
+    }
+
+    [Fact]
+    public void Load_produces_the_same_deal_outcomes_when_rows_are_reversed()
+    {
+        var temporaryCsvPath = Path.Combine(Path.GetTempPath(), $"madlan-deals-{Guid.NewGuid():N}.csv");
+        var rows = File.ReadAllLines(Path.Combine(AppContext.BaseDirectory, "data", "madlan_deals_sample.csv"));
+        File.WriteAllLines(temporaryCsvPath, [rows[0], .. rows.Skip(1).Reverse()]);
+
+        try
+        {
+            using var originalStore = CreateStore();
+            using var reversedStore = CreateStore(temporaryCsvPath);
+            originalStore.Load();
+            reversedStore.Load();
+
+            Assert.Equal(ReadDealOutcomes(originalStore), ReadDealOutcomes(reversedStore));
+        }
+        finally
+        {
+            File.Delete(temporaryCsvPath);
+        }
+    }
+
+    private static DatasetStore CreateStore(string? dataFilePath = null)
+    {
+        var dataFile = dataFilePath ?? Path.Combine(AppContext.BaseDirectory, "data", "madlan_deals_sample.csv");
         var environment = new TestHostEnvironment(AppContext.BaseDirectory);
         var options = Options.Create(new DatasetOptions
         {
@@ -98,6 +147,36 @@ public class DatasetStoreTests
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM Reports;";
         return (long)command.ExecuteScalar()!;
+    }
+
+    private static long ExecuteCount(Microsoft.Data.Sqlite.SqliteConnection connection, string query)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = query;
+        return (long)command.ExecuteScalar()!;
+    }
+
+    private static List<DealOutcome> ReadDealOutcomes(DatasetStore store)
+    {
+        using var connection = store.OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT DealId, ConflictStatus, ReportCount, DistinctReportCount
+            FROM Deals
+            ORDER BY DealId;
+            """;
+        using var reader = command.ExecuteReader();
+        var outcomes = new List<DealOutcome>();
+        while (reader.Read())
+        {
+            outcomes.Add(new DealOutcome(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetInt64(2),
+                reader.GetInt64(3)));
+        }
+
+        return outcomes;
     }
 
     private static NormalizedDealReport ReadNormalizedReport(DatasetStore store, string dealId)
@@ -127,4 +206,6 @@ public class DatasetStoreTests
 
         public IFileProvider ContentRootFileProvider { get; set; }
     }
+
+    private record DealOutcome(string DealId, string ConflictStatus, long ReportCount, long DistinctReportCount);
 }
