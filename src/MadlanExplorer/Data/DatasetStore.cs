@@ -1,0 +1,302 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using CsvHelper;
+using CsvHelper.Configuration;
+using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Options;
+
+namespace MadlanExplorer;
+
+public class DatasetStore : IDisposable
+{
+    private static readonly string[] ExpectedHeaders =
+    [
+        "deal_id", "city", "neighborhood", "street", "property_type", "rooms", "size_sqm",
+        "floor", "total_floors", "year_built", "condition", "has_elevator", "has_parking",
+        "has_balcony", "has_safe_room", "deal_date", "price_nis", "price_per_sqm", "source"
+    ];
+
+    private readonly string _dataFilePath;
+    private readonly string _connectionString;
+    private readonly IsraeliLocalityCatalog _localityCatalog;
+    private SqliteConnection? _keeperConnection;
+
+    public DatasetStore(
+        IOptions<DatasetOptions> options,
+        IHostEnvironment environment,
+        IsraeliLocalityCatalog localityCatalog)
+    {
+        var settings = options.Value;
+
+        var contentRootDataFilePath = Path.Combine(environment.ContentRootPath, settings.DataFile);
+        _dataFilePath = File.Exists(contentRootDataFilePath)
+            ? contentRootDataFilePath
+            : Path.Combine(AppContext.BaseDirectory, settings.DataFile);
+        _connectionString = $"Data Source={settings.DatabaseName};Mode=Memory;Cache=Shared;Pooling=False";
+        _localityCatalog = localityCatalog;
+    }
+
+    public DatasetMetadata Metadata { get; private set; } = new();
+
+    public void Load()
+    {
+        if (_keeperConnection is not null)
+        {
+            return;
+        }
+
+        if (!File.Exists(_dataFilePath))
+        {
+            throw new InvalidOperationException($"Dataset file was not found at '{_dataFilePath}'.");
+        }
+
+        var fileBytes = File.ReadAllBytes(_dataFilePath);
+        _keeperConnection = new SqliteConnection(_connectionString);
+        _keeperConnection.Open();
+
+        try
+        {
+            CreateSchema(_keeperConnection);
+            LoadReports(_keeperConnection, fileBytes);
+        }
+        catch
+        {
+            _keeperConnection.Dispose();
+            _keeperConnection = null;
+            throw;
+        }
+    }
+
+    public SqliteConnection OpenConnection()
+    {
+        if (_keeperConnection is null)
+        {
+            throw new InvalidOperationException("The dataset has not been loaded.");
+        }
+
+        var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        return connection;
+    }
+
+    public void Dispose()
+    {
+        _keeperConnection?.Dispose();
+        _keeperConnection = null;
+    }
+
+    private static void CreateSchema(SqliteConnection connection)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            CREATE TABLE Reports (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                SourceRowNumber INTEGER NOT NULL,
+                DealId TEXT NOT NULL,
+                RawJson TEXT NOT NULL,
+                NormalizedJson TEXT NOT NULL,
+                QualityFlagsJson TEXT NOT NULL
+            );
+            CREATE INDEX IX_Reports_DealId ON Reports (DealId);
+            """;
+        command.ExecuteNonQuery();
+    }
+
+    private void LoadReports(SqliteConnection connection, byte[] fileBytes)
+    {
+        using var transaction = connection.BeginTransaction();
+        using var stream = new MemoryStream(fileBytes);
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        using var csv = new CsvReader(reader, new CsvConfiguration(CultureInfo.InvariantCulture)
+        {
+            BadDataFound = null,
+            MissingFieldFound = null
+        });
+
+        if (!csv.Read())
+        {
+            throw new InvalidOperationException("Dataset CSV is empty.");
+        }
+
+        csv.ReadHeader();
+        ValidateHeaders(csv.HeaderRecord);
+        var parser = csv.Context.Parser ?? throw new InvalidOperationException("Dataset CSV parser was not initialized.");
+
+        var reportCount = 0;
+        while (csv.Read())
+        {
+            var rawFields = ExpectedHeaders.ToDictionary(header => header, header => csv.GetField(header) ?? string.Empty);
+            var normalized = Normalize(rawFields, out var qualityFlags);
+
+            InsertReport(connection, transaction, parser.Row, rawFields, normalized, qualityFlags);
+            reportCount++;
+        }
+
+        transaction.Commit();
+        Metadata = new DatasetMetadata
+        {
+            FileHash = Convert.ToHexString(SHA256.HashData(fileBytes)),
+            ReportCount = reportCount
+        };
+    }
+
+    private static void ValidateHeaders(string[]? headers)
+    {
+        if (headers is null || headers.Length != ExpectedHeaders.Length)
+        {
+            throw new InvalidOperationException("Dataset CSV headers do not match the expected schema.");
+        }
+
+        var actualHeaders = new HashSet<string>(headers, StringComparer.Ordinal);
+        if (actualHeaders.Count != headers.Length || !actualHeaders.SetEquals(ExpectedHeaders))
+        {
+            throw new InvalidOperationException("Dataset CSV headers do not match the expected schema.");
+        }
+    }
+
+    private static void InsertReport(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        int sourceRowNumber,
+        IReadOnlyDictionary<string, string> rawFields,
+        NormalizedDealReport normalized,
+        IReadOnlyList<string> qualityFlags)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO Reports (SourceRowNumber, DealId, RawJson, NormalizedJson, QualityFlagsJson)
+            VALUES ($sourceRowNumber, $dealId, $rawJson, $normalizedJson, $qualityFlagsJson);
+            """;
+        command.Parameters.AddWithValue("$sourceRowNumber", sourceRowNumber);
+        command.Parameters.AddWithValue("$dealId", normalized.DealId);
+        command.Parameters.AddWithValue("$rawJson", JsonSerializer.Serialize(rawFields));
+        command.Parameters.AddWithValue("$normalizedJson", JsonSerializer.Serialize(normalized));
+        command.Parameters.AddWithValue("$qualityFlagsJson", JsonSerializer.Serialize(qualityFlags));
+        command.ExecuteNonQuery();
+    }
+
+    private NormalizedDealReport Normalize(
+        IReadOnlyDictionary<string, string> fields,
+        out IReadOnlyList<string> qualityFlags)
+    {
+        var flags = new List<string>();
+        var dealDate = NormalizeDate(fields["deal_date"], flags);
+
+        var normalized = new NormalizedDealReport
+        {
+            DealId = NormalizeText(fields["deal_id"]),
+            City = NormalizeCity(fields["city"]),
+            Neighborhood = NormalizeNullableText(fields["neighborhood"]),
+            PropertyType = NormalizeText(fields["property_type"]),
+            Rooms = NormalizeDecimal(fields["rooms"], "rooms", flags),
+            SizeSqm = NormalizeDecimal(fields["size_sqm"], "size_sqm", flags),
+            PriceNis = NormalizeDecimal(fields["price_nis"], "price_nis", flags),
+            SuppliedPricePerSqm = NormalizeDecimal(fields["price_per_sqm"], "price_per_sqm", flags),
+            HasElevator = NormalizeBoolean(fields["has_elevator"], "has_elevator", flags),
+            HasParking = NormalizeBoolean(fields["has_parking"], "has_parking", flags),
+            HasBalcony = NormalizeBoolean(fields["has_balcony"], "has_balcony", flags),
+            HasSafeRoom = NormalizeBoolean(fields["has_safe_room"], "has_safe_room", flags),
+            DealDateStart = dealDate.Start,
+            DealDateEnd = dealDate.End,
+            DealDatePrecision = dealDate.Precision
+        };
+
+        qualityFlags = flags;
+        return normalized;
+    }
+
+    private string NormalizeCity(string value)
+    {
+        var normalized = NormalizeText(value);
+        return _localityCatalog.FindCanonicalHebrewName(normalized) ?? normalized;
+    }
+
+    private static string NormalizeText(string value) => string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    private static string? NormalizeNullableText(string value)
+    {
+        var normalized = NormalizeText(value);
+        return string.IsNullOrEmpty(normalized) ? null : normalized;
+    }
+
+    private static decimal? NormalizeDecimal(string value, string field, ICollection<string> flags)
+    {
+        var normalized = NormalizeText(value).Replace("₪", string.Empty, StringComparison.Ordinal).Replace(",", string.Empty, StringComparison.Ordinal);
+        if (string.IsNullOrEmpty(normalized))
+        {
+            return null;
+        }
+
+        normalized = normalized.Replace("חדרים", string.Empty, StringComparison.Ordinal).Trim();
+        if (decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed))
+        {
+            return parsed;
+        }
+
+        flags.Add($"{field}_unrecognized");
+        return null;
+    }
+
+    private static bool? NormalizeBoolean(string value, string field, ICollection<string> flags)
+    {
+        var normalized = NormalizeText(value).ToLowerInvariant();
+        if (string.IsNullOrEmpty(normalized))
+        {
+            return null;
+        }
+
+        if (normalized is "true" or "yes" or "1" or "כן")
+        {
+            return true;
+        }
+
+        if (normalized is "false" or "no" or "0" or "לא")
+        {
+            return false;
+        }
+
+        flags.Add($"{field}_unrecognized");
+        return null;
+    }
+
+    private static NormalizedDate NormalizeDate(string value, ICollection<string> flags)
+    {
+        var normalized = NormalizeText(value);
+        if (DateOnly.TryParseExact(normalized, ["yyyy-MM-dd", "dd.MM.yyyy", "dd/MM/yyyy"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var day))
+        {
+            return new NormalizedDate(day, day, "day");
+        }
+
+        if (DateTime.TryParseExact(normalized, "MMM yyyy", CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var month))
+        {
+            var start = new DateOnly(month.Year, month.Month, 1);
+            return new NormalizedDate(start, start.AddMonths(1).AddDays(-1), "month");
+        }
+
+        if (!string.IsNullOrEmpty(normalized))
+        {
+            flags.Add("deal_date_unrecognized");
+        }
+
+        return new NormalizedDate(null, null, "unknown");
+    }
+
+    private class NormalizedDate
+    {
+        public NormalizedDate(DateOnly? start, DateOnly? end, string precision)
+        {
+            Start = start;
+            End = end;
+            Precision = precision;
+        }
+
+        public DateOnly? Start { get; }
+
+        public DateOnly? End { get; }
+
+        public string Precision { get; }
+    }
+}
