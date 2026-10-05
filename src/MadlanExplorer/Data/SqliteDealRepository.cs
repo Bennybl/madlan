@@ -75,6 +75,94 @@ public class SqliteDealRepository : IDealRepository
         };
     }
 
+    public DatasetFacts GetDatasetFacts()
+    {
+        using var connection = _datasetStore.OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT
+                COUNT(*),
+                SUM(CASE WHEN ConflictStatus = 'usable' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN ConflictStatus = 'conflicting' THEN 1 ELSE 0 END)
+            FROM Deals;
+            """;
+        using var reader = command.ExecuteReader();
+        reader.Read();
+        var dealCount = reader.GetInt32(0);
+        var usableDealCount = reader.GetInt32(1);
+        var conflictingDealCount = reader.GetInt32(2);
+        reader.Dispose();
+
+        return new DatasetFacts
+        {
+            DealCount = dealCount,
+            UsableDealCount = usableDealCount,
+            ConflictingDealCount = conflictingDealCount,
+            Cities = ReadFilterValues(connection, "City"),
+            Neighborhoods = ReadFilterValues(connection, "Neighborhood"),
+            PropertyTypes = ReadFilterValues(connection, "PropertyType")
+        };
+    }
+
+    public DealDetail? GetDeal(string dealId)
+    {
+        using var connection = _datasetStore.OpenConnection();
+        using var dealCommand = connection.CreateCommand();
+        dealCommand.CommandText = """
+            SELECT DealId, ConflictStatus, ReportCount, DistinctReportCount, CanonicalReportId
+            FROM Deals
+            WHERE DealId = $dealId;
+            """;
+        dealCommand.Parameters.AddWithValue("$dealId", dealId);
+        using var dealReader = dealCommand.ExecuteReader();
+        if (!dealReader.Read())
+        {
+            return null;
+        }
+
+        var detail = new DealDetail
+        {
+            DealId = dealReader.GetString(0),
+            ConflictStatus = dealReader.GetString(1),
+            ReportCount = dealReader.GetInt32(2),
+            DistinctReportCount = dealReader.GetInt32(3),
+            CanonicalReportId = dealReader.IsDBNull(4) ? null : dealReader.GetInt64(4)
+        };
+        dealReader.Dispose();
+
+        using var reportCommand = connection.CreateCommand();
+        reportCommand.CommandText = """
+            SELECT Id, SourceRowNumber, RawJson, NormalizedJson, QualityFlagsJson
+            FROM Reports
+            WHERE DealId = $dealId
+            ORDER BY SourceRowNumber;
+            """;
+        reportCommand.Parameters.AddWithValue("$dealId", dealId);
+        using var reportReader = reportCommand.ExecuteReader();
+        var reports = new List<DealReportDetail>();
+        while (reportReader.Read())
+        {
+            reports.Add(new DealReportDetail
+            {
+                ReportId = reportReader.GetInt64(0),
+                SourceRowNumber = reportReader.GetInt32(1),
+                RawJson = reportReader.GetString(2),
+                NormalizedJson = reportReader.GetString(3),
+                QualityFlagsJson = reportReader.GetString(4)
+            });
+        }
+
+        return new DealDetail
+        {
+            DealId = detail.DealId,
+            ConflictStatus = detail.ConflictStatus,
+            ReportCount = detail.ReportCount,
+            DistinctReportCount = detail.DistinctReportCount,
+            CanonicalReportId = detail.CanonicalReportId,
+            Reports = reports
+        };
+    }
+
     private static (IReadOnlyList<string> DealIds, bool HasMore) ReadEvidence(SqliteConnection connection, DealFilters filters, int evidencePageSize)
     {
         using var command = connection.CreateCommand();
@@ -110,6 +198,25 @@ public class SqliteDealRepository : IDealRepository
         command.Parameters.AddWithValue("$maximumRooms", (object?)filters.MaximumRooms ?? DBNull.Value);
         command.Parameters.AddWithValue("$startDate", filters.StartDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$endDate", filters.EndDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? (object)DBNull.Value);
+    }
+
+    private static IReadOnlyList<string> ReadFilterValues(SqliteConnection connection, string columnName)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT DISTINCT {columnName}
+            FROM Deals
+            WHERE ConflictStatus = 'usable' AND {columnName} IS NOT NULL AND {columnName} <> ''
+            ORDER BY {columnName};
+            """;
+        using var reader = command.ExecuteReader();
+        var values = new List<string>();
+        while (reader.Read())
+        {
+            values.Add(reader.GetString(0));
+        }
+
+        return values;
     }
 
 }

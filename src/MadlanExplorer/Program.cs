@@ -19,6 +19,7 @@ public static class Application
         builder.Services.AddSingleton<IsraeliLocalityCatalog>();
         builder.Services.AddSingleton<DatasetStore>();
         builder.Services.AddSingleton<IDealRepository, SqliteDealRepository>();
+        builder.Services.AddSingleton<DatasetService>();
         builder.Services.AddSingleton<QueryService>();
 
         var app = builder.Build();
@@ -29,7 +30,25 @@ public static class Application
         datasetStore.Load();
         app.Lifetime.ApplicationStopping.Register(datasetStore.Dispose);
 
+        app.Use(async (context, next) =>
+        {
+            context.Response.Headers["X-Request-Id"] = context.TraceIdentifier;
+            await next(context);
+        });
+
+        app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            await context.Response.WriteAsJsonAsync(new ApiErrorResponse
+            {
+                Code = "internal_error",
+                Message = "אירעה שגיאה פנימית. נסו שוב מאוחר יותר.",
+                RequestId = context.TraceIdentifier
+            });
+        }));
+
         app.MapGet("/healthz", () => Results.Ok(new HealthResponse("ok")));
+        ApiEndpoints.Map(app);
 
         return app;
     }

@@ -66,7 +66,7 @@ The application loads the supplied CSV into in-memory SQLite once at startup. Th
 
 ## 8. Generate structured queries with an LLM
 
-**Change:** Add a small provider interface and query-generation stage. Configure separate model IDs for query generation, query verification, result summary and result verification. Generate typed filters, clarification or unsupported results; validate with the same C# rules as manual filters. Retain the unchanged original prompt. Add stage timeouts, cancellation and structured output validation.
+**Change:** Add a small provider interface and query-generation stage. Configure separate model IDs for query generation, query verification, result summary and result verification. Implement a `GrokLlmProvider` as the initial adapter, selected by configuration, while keeping Grok authentication, HTTP calls and response parsing behind the provider interface so another provider can be added without workflow changes. Generate typed filters, clarification or unsupported results; validate with the same C# rules as manual filters. Retain the unchanged original prompt. Add stage timeouts, cancellation and structured output validation.
 
 **Verify:** Fake-provider tests cover supported questions, exact rooms, locality typos, ambiguous places, relative dates, unsupported requests, missing keys, malformed output and timeout. Confirm the configured generation model is used. Run real Hebrew examples when credentials are available.
 

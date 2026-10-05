@@ -81,3 +81,11 @@ The user then clarified that PostgreSQL must not be implemented in this project.
 Implemented step 6. `QueryService` validates application filters and produces a provider-neutral `DealQuery`; `IDealRepository` defines execution; and `SqliteDealRepository` owns the parameterized SQLite statements, database-side aggregates and bounded evidence read. `DatasetStore` now has only dataset lifecycle and loading responsibilities. Dependency injection selects the SQLite implementation for this demo, and a fake repository verifies the service boundary without SQLite.
 
 The integration tests now resolve `QueryService` through dependency injection and retain coverage for filtering, null metrics and invalid filters. A new test verifies that a broad query returns at most the default 100 evidence IDs while reporting that more matching evidence exists. Docker's .NET 10 test target passed all 16 tests.
+
+## Commit: feat: expose query and evidence APIs
+
+Implemented step 7 with read-only dataset, manual-query and deal-detail endpoints. The API returns dataset hash, applied filters, warnings and bounded evidence. It exposes all reports for a deal, including conflicting deals, while query metrics continue to exclude conflicts. Errors have stable codes, Hebrew messages and request IDs; successful responses include the same request-ID header.
+
+The user requested that the future LLM integration remain replaceable while starting with Grok. The architecture and implementation plan now require workflow code to depend on `ILlmProvider`; a later `GrokLlmProvider` will isolate Grok HTTP, authentication and response parsing behind that interface.
+
+The first API test compilation showed that the existing fake repository no longer implemented the two new evidence methods on `IDealRepository`. Adding inert fake implementations corrected the test double; no production behavior changed.
