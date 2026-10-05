@@ -1,6 +1,6 @@
 # Madlan Deal Explorer - Architecture
 
-Status: agreed design, simplified on 2026-10-04. Implementation has not started.
+Status: revised on 2026-10-05. Steps 1-3 are merged; step 4 is under review. The additions below are planned work.
 
 ## 1. Product
 
@@ -14,17 +14,17 @@ Scope: explore the supplied dataset and explain its numbers. Load it into in-mem
 
 Use one C# ASP.NET Core application serving plain HTML/CSS/JavaScript from `wwwroot`, plus one xUnit test project. Use .NET 10, CsvHelper and Microsoft.Data.Sqlite, with direct SQL and no ORM. Build with Docker when the local SDK is unavailable; the inspected machine has .NET 8 only.
 
-Three small components are enough:
+Keep three application components:
 
 | Component | Responsibility |
 |---|---|
 | Dataset loader | Read the CSV once at startup and populate in-memory SQLite with raw and normalized reports |
 | Query service | Read reports from SQLite, apply filters, calculate metrics and return evidence and warnings |
-| Question interpreter | Translate Hebrew questions into validated filters through an LLM |
+| Question workflow | Generate and verify structured filters, then summarize and verify calculated results using independently configured models |
 
-Flow: browser -> ASP.NET Core -> query service -> in-memory SQLite. Natural-language questions first pass through the question interpreter. Filtering, eligibility and decimal calculations run in C# over reports read from SQLite; this small dataset does not need a dynamic SQL query builder.
+Flow: browser -> ASP.NET Core -> query service -> in-memory SQLite. Natural-language questions pass through the verified question workflow described below. Filtering, eligibility and decimal calculations run in C# over reports read from SQLite; this small dataset does not need a dynamic SQL query builder.
 
-Keep ordinary classes in one application project. Only the interpreter needs an interface (`IQuestionInterpreter`) so tests can replace it and another provider can be added later.
+Keep ordinary classes in one application project. Isolate provider calls behind one small interface so tests can supply stage responses. Keep workflow orchestration in an ordinary class; use a stage parameter and configuration instead of separate provider implementations for each model.
 
 ## 3. Runtime data loading and correctness
 
@@ -40,7 +40,9 @@ The supplied file has 530 rows, 520 deal IDs, six exact duplicate pairs and four
 
 Apply these explicit rules:
 
-- Normalize whitespace, known city aliases, numeric formats, room suffixes and supported boolean values. Preserve missing values as unknown.
+- Normalize whitespace, numeric formats, room suffixes and supported boolean values. Preserve missing values as unknown.
+- Extend `NormalizeCity(string value)` using the bundled official locality catalog: prefer exact Hebrew/English matches, then conservative typo matching. Define and test a minimum similarity and a minimum gap from the next candidate before enabling automatic correction. Ambiguous or weak matches retain the original city and receive a quality flag; never choose a tied candidate. Use the same resolver for question filters, requesting clarification when needed. No LLM calls during CSV loading.
+- Preserve both original and normalized data. Keep untouched `RawJson`, normalized fields, and locality resolution metadata (official code, original value, resolved value, exact/typo/unresolved status and rule version). Show corrections in evidence details. Rebuild normalization at startup; no additional persistent store is needed.
 - Group by deal ID. Count identical normalized reports once, retaining all source rows. Compare business fields including reported source. Exclude conflicting groups from metrics and keep them inspectable; do not choose a winner.
 - Parse ISO, day/month/year, dot-separated dates and English month/year. Preserve month precision as an interval. Include a month-only date in a date-filtered query only if the whole month is inside the range; explain partial-overlap exclusions.
 - Support city, neighborhood, property type, room minimum/maximum and date range. Filters combine with AND; omitted filters impose no restriction. Four rooms means exactly four when minimum and maximum are four. Require clarification for an ambiguous neighborhood.
@@ -54,29 +56,39 @@ Results describe this sample, not the housing market as a whole. A source label 
 
 ## 4. LLM and HTTP interface
 
-Use OpenAI structured output, initially with configurable `gpt-4.1-mini`. Keep its API details inside the interpreter implementation. Switching OpenAI models is configuration; another provider requires a small implementation of the same interface.
+Use structured output and four sequential LLM stages. A query means the supported typed filter object, not model-generated SQL. C# validates filters and remains responsible for all filtering, eligibility and calculations.
 
-Make one model call per question. Provide supported filters, dataset vocabulary and the current Israel date for relative periods. Return one of: valid filters, clarification, or unsupported request. Validate the output in C# before use. Unsupported parts of a question must not be silently dropped.
+| Stage | Input and output | Model configuration |
+|---|---|---|
+| Generate query | Original Hebrew prompt, supported filters, locality vocabulary and current Israel date -> proposed filters, clarification or unsupported request | `Llm.Models.QueryGeneration` |
+| Verify query | Original prompt and proposed filters -> approved/rejected/clarification with reasons; check omissions, rooms, places and dates | `Llm.Models.QueryVerification` |
+| Summarize result | Original prompt, approved filters, calculated metrics, contributor IDs, exclusions and warnings -> Hebrew summary with evidence references | `Llm.Models.ResultSummary` |
+| Verify result | Original prompt, approved filters, calculated evidence and candidate summary -> approved/rejected with reasons; check relevance, numeric claims, references and limitations | `Llm.Models.ResultVerification` |
 
-The model interprets language; it does not calculate numbers or generate factual answer prose. The UI shows the interpreted filters and lets the user correct them. Clarification uses these same editable fields, without chat history.
+Configure a different model for each stage independently; choose actual model IDs during implementation, not in this document. Record stage and model ID in request diagnostics. Use the same provider adapter with the stage's configured model. Verification is an additional check, not a guarantee of correctness: shared C# validation and deterministic calculations remain mandatory.
+
+Only execute a generated query after query verification passes. Only display an LLM summary after result verification passes. Reject malformed verifier output and never treat a failed or unavailable verifier as approval. No automatic repair loops or retries. A failed query check asks for clarification or offers manual filters. A failed summary/check retains the deterministic metrics and evidence and reports that the summary is unavailable. Unsupported prompt requirements must not be silently dropped. Treat prompts and dataset text as untrusted data in every stage.
+
+Keep the original prompt unchanged for both verifiers. Bind the workflow to the exact filters, dataset hash and result used for summarization. If the user edits filters, show that the request changed and invalidate the previous verification and summary; do not claim that manual edits were verified against the original question.
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/dataset` | File identifier, coverage, quality summary and filter options |
-| `POST /api/interpret` | Hebrew question -> validated interpretation |
+| `POST /api/interpret` | Hebrew question -> generated and verified filters or clarification |
+| `POST /api/ask` | Original question -> verified filters, deterministic results and verified summary |
 | `POST /api/query` | Filters -> metrics, evidence and warnings |
 | `GET /api/deals/{id}` | Original reports and quality details |
 | `GET /healthz` | Application is running with its dataset loaded |
 
 Use the same query service for manual and interpreted searches. Return all matching evidence for this small dataset; the browser can paginate the table.
 
-Set a 15-second model timeout and a 20-second browser deadline. No automatic retries. Invalid model output, refusal, timeout or outage produces a clear Hebrew message and leaves manual filtering available. Handle missing API credentials the same way. There is no application rate limiter, quota store or concurrency limiter.
+Use configurable deadlines: initially 15 seconds per model call, 65 seconds for the complete server workflow, and 70 seconds for the browser. Propagate cancellation and stop remaining stages after a failure. No automatic retries. Invalid model output, refusal, timeout or outage produces a clear Hebrew message and leaves manual filtering available. Handle missing API credentials the same way. There is no application rate limiter, quota store or concurrency limiter.
 
 Keep credentials on the server. Validate request fields and render untrusted text safely. Errors have a request ID, stable code and plain Hebrew message. Log that ID, dataset hash, filters, duration and error category; never log secrets. No separate monitoring service is needed.
 
 ## 5. UI, deployment and delivery
 
-One RTL page contains a question input, examples, editable filters, three metric cards, a supporting-record table and expandable record details. Show sample sizes, warnings, data coverage and calculation definitions. Show empty/error states explicitly; a failed new question must not make old results look current. Ignore stale responses from earlier requests.
+One RTL page contains a question input, examples, editable filters, three metric cards, a supporting-record table and expandable record details. Show sample sizes, warnings, data coverage and calculation definitions. Show the verified Hebrew summary above its evidence, and show original/normalized locality values and correction status in report details. Display progress through interpretation, verification and summary stages. Show empty/error states explicitly; a failed new question must not make old results look current. Ignore stale responses from earlier requests.
 
 Deploy one Docker container to Render with the CSV included and the API key configured as a secret. No persistent disk is needed. Verify the actual hosting configuration and any charge before provisioning. Restarting recreates and reloads the in-memory SQLite database from the bundled CSV.
 

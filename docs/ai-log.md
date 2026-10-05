@@ -51,3 +51,7 @@ Step 4 adds a read-only query service that loads only usable canonical reports f
 The user requested one class or DTO per file. Moved DealFilters and DealQueryResult into their own matching files and removed an unused import. Query behavior is unchanged. The other step 4 test classes already have their own files.
 
 Validation: Docker test target passed all 12 tests.
+
+## Commit: docs: plan locality correction and verified LLM workflow
+
+The user requested architecture and plan coverage for locality typo handling, preservation of original and normalized values, and four separately configured LLM stages: query generation, query verification, result summarization and result verification against the original prompt. The documents now define conservative official-catalog matching, auditable locality metadata, verification gates, manual fallback, independent model configuration and new reviewable implementation steps. No runtime behavior changes in this commit.
