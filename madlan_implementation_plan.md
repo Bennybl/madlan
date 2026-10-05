@@ -58,15 +58,15 @@ The application loads the supplied CSV into in-memory SQLite once at startup. Th
 
 ## 7. Expose the query and evidence APIs
 
-**Change:** Add dataset, query and deal-detail endpoints. Include applied filters, dataset hash, warnings and supporting reports. Add consistent Hebrew errors, request IDs and simple structured logs. Health succeeds only after data loading. Keep all data read-only.
+**Change:** Add one `POST /api/ask` endpoint that accepts and preserves the original Hebrew prompt, then delegates to the application service. Add consistent Hebrew errors, request IDs and simple structured logs. Health succeeds only after data loading. Keep all data read-only. The LLM workflow itself is implemented in the following steps; do not expose repository or manual-query endpoints publicly.
 
-**Verify:** API tests cover a valid query, invalid filters, no matches, missing deal and conflict inspection. Check that contributor IDs resolve to the expected reports and errors do not expose stack traces.
+**Verify:** API tests cover a valid prompt, an invalid prompt and request IDs. Check that the original prompt is unchanged and errors do not expose stack traces.
 
-**Done when:** Manual filtering and number investigation work through HTTP without model access.
+**Done when:** The public HTTP entry point preserves a user question and passes it to the application service; later steps add generation, verification and deterministic query execution.
 
 ## 8. Generate structured queries with an LLM
 
-**Change:** Add a small provider interface and query-generation stage. Configure separate model IDs for query generation, query verification, result summary and result verification. Generate typed filters, clarification or unsupported results; validate with the same C# rules as manual filters. Retain the unchanged original prompt. Add stage timeouts, cancellation and structured output validation.
+**Change:** Add a small provider interface and query-generation stage. Configure separate model IDs for query generation, query verification, result summary and result verification. Implement a `GrokLlmProvider` as the initial adapter, selected by configuration, while keeping Grok authentication, HTTP calls and response parsing behind the provider interface so another provider can be added without workflow changes. Generate typed filters, clarification or unsupported results; validate with the same C# rules as manual filters. Retain the unchanged original prompt. Add stage timeouts, cancellation and structured output validation.
 
 **Verify:** Fake-provider tests cover supported questions, exact rooms, locality typos, ambiguous places, relative dates, unsupported requests, missing keys, malformed output and timeout. Confirm the configured generation model is used. Run real Hebrew examples when credentials are available.
 

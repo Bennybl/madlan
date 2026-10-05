@@ -11,4 +11,14 @@ public class FakeDealRepository : IDealRepository
         ReceivedQuery = query;
         return new DealQueryResult { TransactionCount = 7 };
     }
+
+    public DatasetFacts GetDatasetFacts()
+    {
+        return new DatasetFacts();
+    }
+
+    public DealDetail? GetDeal(string dealId)
+    {
+        return null;
+    }
 }

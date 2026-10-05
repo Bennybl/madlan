@@ -23,7 +23,7 @@ Keep three application components:
 | Deal repository | Translate a provider-neutral query into parameterized database commands and return results/evidence pages |
 | Question workflow | Generate and verify structured filters, then summarize and verify calculated results using independently configured models |
 
-Flow: browser -> ASP.NET Core -> query service -> deal repository -> database. Natural-language questions pass through the verified question workflow described below. The query service validates filters and builds a provider-neutral `DealQuery`; it never contains provider SQL. `IDealRepository` translates that query into fixed parameterized commands for its provider. Database filtering, conflict exclusion, aggregation, median calculation and pagination prevent request code from loading a full result set into application memory.
+Flow: browser -> ASP.NET Core controller -> application service -> query service -> deal repository -> database. The single application service orchestrates manual requests now and will coordinate the LLM stages, query service and repositories for natural-language requests. The query service validates filters and builds a provider-neutral `DealQuery`; it never contains provider SQL. `IDealRepository` translates that query into fixed parameterized commands for its provider. Database filtering, conflict exclusion, aggregation, median calculation and pagination prevent request code from loading a full result set into application memory.
 
 Keep ordinary classes in one application project. `QueryService` depends only on `IDealRepository`; it does not know which database implementation is registered. `SqliteDealRepository` supports the demo. Do not implement a PostgreSQL repository, add a PostgreSQL package, or configure a PostgreSQL connection in this project. The repository contract, typed query/result objects, and provider-neutral service semantics make a future PostgreSQL adapter straightforward to add. Isolate LLM provider calls behind one small interface so tests can supply stage responses. Keep workflow orchestration in an ordinary class; use a stage parameter and configuration instead of separate provider implementations for each model.
 
@@ -68,7 +68,7 @@ Use structured output and four sequential LLM stages. A query means the supporte
 | Summarize result | Original prompt, approved filters, calculated metrics, contributor IDs, exclusions and warnings -> Hebrew summary with evidence references | `Llm.Models.ResultSummary` |
 | Verify result | Original prompt, approved filters, calculated evidence and candidate summary -> approved/rejected with reasons; check relevance, numeric claims, references and limitations | `Llm.Models.ResultVerification` |
 
-Configure a different model for each stage independently; choose actual model IDs during implementation, not in this document. Record stage and model ID in request diagnostics. Use the same provider adapter with the stage's configured model. Verification is an additional check, not a guarantee of correctness: shared C# validation and deterministic calculations remain mandatory.
+Configure a different model for each stage independently. Define an `ILlmProvider` interface that accepts a stage, its configured model ID, structured input and cancellation token; workflow code depends only on this interface. Start with a `GrokLlmProvider` adapter selected through configuration, with Grok credentials kept in server-side secrets. Keep Grok HTTP details, authentication and response parsing inside that adapter so a future provider can implement the same interface without changing the workflow, query or API code. Record stage and model ID in request diagnostics. Verification is an additional check, not a guarantee of correctness: shared C# validation and deterministic calculations remain mandatory.
 
 Only execute a generated query after query verification passes. Only display an LLM summary after result verification passes. Reject malformed verifier output and never treat a failed or unavailable verifier as approval. No automatic repair loops or retries. A failed query check asks for clarification or offers manual filters. A failed summary/check retains the deterministic metrics and evidence and reports that the summary is unavailable. Unsupported prompt requirements must not be silently dropped. Treat prompts and dataset text as untrusted data in every stage.
 
@@ -76,14 +76,10 @@ Keep the original prompt unchanged for both verifiers. Bind the workflow to the 
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/dataset` | File identifier, coverage, quality summary and filter options |
-| `POST /api/interpret` | Hebrew question -> generated and verified filters or clarification |
 | `POST /api/ask` | Original question -> verified filters, deterministic results and verified summary |
-| `POST /api/query` | Filters -> metrics, evidence and warnings |
-| `GET /api/deals/{id}` | Original reports and quality details |
 | `GET /healthz` | Application is running with its dataset loaded |
 
-Use the same query service and repository contract for manual and interpreted searches. Return a bounded evidence page and cursor; the browser requests later pages explicitly.
+The application service owns the `/api/ask` workflow. It calls the LLM stages, query service and repository without exposing those internal operations as public endpoints. Return bounded evidence in the final response.
 
 Use configurable deadlines: initially 15 seconds per model call, 65 seconds for the complete server workflow, and 70 seconds for the browser. Propagate cancellation and stop remaining stages after a failure. No automatic retries. Invalid model output, refusal, timeout or outage produces a clear Hebrew message and leaves manual filtering available. Handle missing API credentials the same way. There is no application rate limiter, quota store or concurrency limiter.
 
