@@ -6,6 +6,7 @@ import ResultsPanel from "./components/ResultsPanel.jsx";
 import ManualFiltersPanel from "./components/ManualFiltersPanel.jsx";
 import DealLookupPanel from "./components/DealLookupPanel.jsx";
 import DefinitionsPanel from "./components/DefinitionsPanel.jsx";
+import CsmGuidePanel from "./components/CsmGuidePanel.jsx";
 
 export default function App() {
   const [dataset, setDataset] = useState(null);
@@ -32,10 +33,12 @@ export default function App() {
         <ManualFiltersPanel suggestedFilters={null} dataset={dataset} />
         <DealLookupPanel />
         <DefinitionsPanel />
+        <CsmGuidePanel />
       </main>
 
       <footer className="page-footer">
         {dataset && <p>גרסת מדגם: {dataset.datasetHash}</p>}
+        <p><a href="#csm-guide-heading">מדריך לנציג שירות לקוחות</a></p>
       </footer>
     </>
   );
