@@ -96,14 +96,14 @@ public class QueryServiceTests
     }
 
     [Fact]
-    public void Query_passes_the_outlier_field_to_the_repository()
+    public void Query_passes_the_outlier_fields_to_the_repository()
     {
         var repository = new FakeDealRepository();
         var service = new QueryService(repository);
 
-        service.Query(new DealFilters(), outlierField: OutlierField.Price);
+        service.Query(new DealFilters(), outlierFields: [OutlierField.Price, OutlierField.Rooms]);
 
-        Assert.Equal(OutlierField.Price, repository.ReceivedQuery?.OutlierField);
+        Assert.Equal([OutlierField.Price, OutlierField.Rooms], repository.ReceivedQuery?.OutlierFields);
     }
 
     [Fact]

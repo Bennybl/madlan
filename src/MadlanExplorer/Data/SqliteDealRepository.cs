@@ -117,9 +117,11 @@ public class SqliteDealRepository : IDealRepository
             ? ComputeGroups(connection, filters, groupByField, query.Metrics, query.RankedMetrics)
             : [];
 
-        var outliers = query.OutlierField is { } outlierField
-            ? ComputeOutliers(connection, filters, outlierField, query.GroupBy)
-            : [];
+        var outliers = new List<OutlierResult>();
+        foreach (var outlierField in query.OutlierFields.Distinct())
+        {
+            outliers.AddRange(ComputeOutliers(connection, filters, outlierField, query.GroupBy));
+        }
 
         return new DealQueryResult
         {
@@ -137,7 +139,7 @@ public class SqliteDealRepository : IDealRepository
             RankedMetrics = rankedMetrics,
             GroupBy = query.GroupBy,
             Groups = groups,
-            OutlierField = query.OutlierField,
+            OutlierFields = query.OutlierFields,
             Outliers = outliers
         };
     }
@@ -523,6 +525,7 @@ public class SqliteDealRepository : IDealRepository
         {
             results.Add(new OutlierResult
             {
+                Field = field,
                 GroupValue = reader.IsDBNull(0) ? null : Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture),
                 DealId = reader.GetString(1),
                 Value = Convert.ToDecimal(reader.GetDouble(2)),

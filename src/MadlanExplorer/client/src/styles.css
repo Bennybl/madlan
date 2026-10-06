@@ -364,6 +364,15 @@ a:focus-visible {
   margin-bottom: 0.3rem;
 }
 
+.outliers-field-group {
+  margin-top: 0.5rem;
+}
+
+.outliers-field-group h5 {
+  margin: 0 0 0.2rem;
+  font-size: 0.9rem;
+}
+
 .outliers-list {
   margin: 0;
   padding-inline-start: 1.25rem;

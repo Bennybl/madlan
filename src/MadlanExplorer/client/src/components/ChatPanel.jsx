@@ -24,9 +24,25 @@ export default function ChatPanel({ onFiltersSuggested, onResult }) {
     }
   }, [messages, thinking]);
 
+  function buildPromptWithClarificationContext(trimmed) {
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "assistant" || last.response?.status !== "clarification") {
+      return trimmed;
+    }
+
+    const previousUser = [...messages].reverse().find((m) => m.role === "user");
+    if (!previousUser) {
+      return trimmed;
+    }
+
+    return `${previousUser.text} (המערכת שאלה הבהרה: "${last.response.message}"; תשובת המשתמש: "${trimmed}")`;
+  }
+
   async function submit(text) {
     const trimmed = text.trim();
     if (!trimmed || thinking) return;
+
+    const promptToSend = buildPromptWithClarificationContext(trimmed);
 
     setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", text: trimmed }]);
     setQuestion("");
@@ -38,7 +54,7 @@ export default function ChatPanel({ onFiltersSuggested, onResult }) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: trimmed })
+          body: JSON.stringify({ prompt: promptToSend })
         },
         ASK_TIMEOUT_MS
       );

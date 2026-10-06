@@ -14,7 +14,7 @@ public class QueryService
         IReadOnlyList<QueryMetric>? metrics = null,
         IReadOnlyList<RankedMetricRequest>? rankedMetrics = null,
         GroupByField? groupBy = null,
-        OutlierField? outlierField = null)
+        IReadOnlyList<OutlierField>? outlierFields = null)
     {
         ValidateFilters(filters);
         var ranked = rankedMetrics ?? [];
@@ -25,7 +25,7 @@ public class QueryService
             Metrics = metrics ?? [],
             RankedMetrics = ranked,
             GroupBy = groupBy,
-            OutlierField = outlierField
+            OutlierFields = outlierFields ?? []
         });
     }
 

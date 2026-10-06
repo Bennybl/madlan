@@ -122,7 +122,7 @@ public class QueryVerificationServiceTests
             [],
             [],
             GroupByField.City,
-            OutlierField.Price,
+            [OutlierField.Price],
             CancellationToken.None);
 
         Assert.Equal("approved", result.Outcome);

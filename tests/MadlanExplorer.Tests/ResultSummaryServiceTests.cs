@@ -117,8 +117,8 @@ public class ResultSummaryServiceTests
         var result = new DealQueryResult
         {
             TransactionCount = 5,
-            OutlierField = OutlierField.Price,
-            Outliers = [new OutlierResult { DealId = "D1", Value = 18000m, LowerBound = 500000m, UpperBound = 9000000m }]
+            OutlierFields = [OutlierField.Price],
+            Outliers = [new OutlierResult { Field = OutlierField.Price, DealId = "D1", Value = 18000m, LowerBound = 500000m, UpperBound = 9000000m }]
         };
 
         await service.SummarizeAsync("שאלה", new DealFilters(), "hash-abc123", result, CancellationToken.None);

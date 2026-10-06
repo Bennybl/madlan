@@ -14,5 +14,5 @@ public class QueryGenerationOutput
 
     public string? GroupBy { get; init; }
 
-    public string? OutlierField { get; init; }
+    public IReadOnlyList<string>? OutlierFields { get; init; }
 }

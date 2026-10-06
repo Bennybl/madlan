@@ -16,7 +16,7 @@ public class AskResponse
 
     public GroupByField? GroupBy { get; init; }
 
-    public OutlierField? OutlierField { get; init; }
+    public IReadOnlyList<OutlierField>? OutlierFields { get; init; }
 
     public DealQueryResult? Result { get; init; }
 

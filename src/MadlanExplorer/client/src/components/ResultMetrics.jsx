@@ -92,28 +92,36 @@ export default function ResultMetrics({ result }) {
         </div>
       )}
 
-      {result.outlierField && (
+      {result.outlierFields && result.outlierFields.length > 0 && (
         <div className="outliers-panel">
-          <h4>חריגים — {OUTLIER_FIELD_LABELS[result.outlierField] || result.outlierField}</h4>
+          <h4>חריגים</h4>
           <p className="hint">
             חריג מוגדר כאן כערך הרחוק מהטווח הטיפוסי (שיטת הטווח הבין-רבעוני, IQR) בתוך כל קבוצה
             {result.groupBy ? ` (${GROUP_BY_LABELS[result.groupBy] || result.groupBy})` : ""}; זו אינה בדיקה סטטיסטית
             פורמלית של התאמה להתפלגות נורמלית.
           </p>
-          {outliers.length === 0 ? (
-            <p className="hint">לא נמצאו חריגים במדגם התואם.</p>
-          ) : (
-            <ul className="outliers-list">
-              {outliers.map((outlier) => (
-                <li key={`${outlier.groupValue ?? "all"}-${outlier.dealId}`}>
-                  {outlier.groupValue && <strong>{outlier.groupValue}: </strong>}
-                  עסקה {outlier.dealId} — {formatOutlierValue(result.outlierField, outlier.value)}
-                  {" "}(טווח טיפוסי: {formatOutlierValue(result.outlierField, outlier.lowerBound)}
-                  {" "}עד {formatOutlierValue(result.outlierField, outlier.upperBound)})
-                </li>
-              ))}
-            </ul>
-          )}
+          {result.outlierFields.map((field) => {
+            const fieldOutliers = outliers.filter((o) => o.field === field);
+            return (
+              <div key={field} className="outliers-field-group">
+                <h5>{OUTLIER_FIELD_LABELS[field] || field}</h5>
+                {fieldOutliers.length === 0 ? (
+                  <p className="hint">לא נמצאו חריגים במדגם התואם.</p>
+                ) : (
+                  <ul className="outliers-list">
+                    {fieldOutliers.map((outlier) => (
+                      <li key={`${field}-${outlier.groupValue ?? "all"}-${outlier.dealId}`}>
+                        {outlier.groupValue && <strong>{outlier.groupValue}: </strong>}
+                        עסקה {outlier.dealId} — {formatOutlierValue(field, outlier.value)}
+                        {" "}(טווח טיפוסי: {formatOutlierValue(field, outlier.lowerBound)}
+                        {" "}עד {formatOutlierValue(field, outlier.upperBound)})
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

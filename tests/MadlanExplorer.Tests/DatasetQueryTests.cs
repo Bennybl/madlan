@@ -235,6 +235,22 @@ public class DatasetQueryTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public void Query_computes_outliers_for_every_requested_field_independently()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var result = scope.ServiceProvider.GetRequiredService<QueryService>().Query(
+            new DealFilters(),
+            outlierFields: [OutlierField.Price, OutlierField.SizeSqm, OutlierField.Rooms]);
+
+        var fieldsPresent = result.Outliers.Select(o => o.Field).Distinct().ToList();
+        Assert.True(fieldsPresent.Count > 1, "Expected outliers from more than one requested field.");
+        foreach (var outlier in result.Outliers)
+        {
+            Assert.True(outlier.Value < outlier.LowerBound || outlier.Value > outlier.UpperBound);
+        }
+    }
+
+    [Fact]
     public void Query_computes_outliers_independently_per_group()
     {
         var result = QueryOutliers(new DealFilters(), OutlierField.Price, GroupByField.City);
@@ -287,6 +303,6 @@ public class DatasetQueryTests : IClassFixture<WebApplicationFactory<Program>>
     private DealQueryResult QueryOutliers(DealFilters filters, OutlierField outlierField, GroupByField? groupBy = null)
     {
         using var scope = _factory.Services.CreateScope();
-        return scope.ServiceProvider.GetRequiredService<QueryService>().Query(filters, groupBy: groupBy, outlierField: outlierField);
+        return scope.ServiceProvider.GetRequiredService<QueryService>().Query(filters, groupBy: groupBy, outlierFields: [outlierField]);
     }
 }

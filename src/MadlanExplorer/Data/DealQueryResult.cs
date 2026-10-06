@@ -32,7 +32,7 @@ public class DealQueryResult
 
     public IReadOnlyList<GroupedQueryResult> Groups { get; init; } = [];
 
-    public OutlierField? OutlierField { get; init; }
+    public IReadOnlyList<OutlierField> OutlierFields { get; init; } = [];
 
     public IReadOnlyList<OutlierResult> Outliers { get; init; } = [];
 }

@@ -2,6 +2,8 @@ namespace MadlanExplorer;
 
 public class OutlierResult
 {
+    public OutlierField Field { get; init; }
+
     public string? GroupValue { get; init; }
 
     public string DealId { get; init; } = string.Empty;

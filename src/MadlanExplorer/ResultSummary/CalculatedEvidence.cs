@@ -35,9 +35,10 @@ public static class CalculatedEvidence
                 requestedMetrics = g.RequestedMetrics.Select(m => new { metric = m.Metric, value = m.Value, dealId = m.DealId }),
                 rankedMetrics = g.RankedMetrics.Select(m => new { metric = m.Metric, rank = m.Rank, value = m.Value, dealId = m.DealId })
             }),
-            outlierField = result.OutlierField,
+            outlierFields = result.OutlierFields,
             outliers = result.Outliers.Select(o => new
             {
+                field = o.Field,
                 groupValue = o.GroupValue,
                 dealId = o.DealId,
                 value = o.Value,
