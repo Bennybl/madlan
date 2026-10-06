@@ -1,9 +1,12 @@
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 
 namespace MadlanExplorer;
 
 public class MadlanApplicationService
 {
+    private static readonly Regex DealIdPattern = new(@"\bD\d{6}\b", RegexOptions.Compiled);
+
     private readonly QueryGenerationService _queryGenerationService;
     private readonly QueryVerificationService _queryVerificationService;
     private readonly QueryService _queryService;
@@ -71,6 +74,15 @@ public class MadlanApplicationService
 
     public async Task<AskResponse> AskAsync(string prompt, CancellationToken cancellationToken)
     {
+        var dealIdMatch = DealIdPattern.Match(prompt);
+        if (dealIdMatch.Success)
+        {
+            var dealId = dealIdMatch.Value;
+            return _dealRepository.GetDeal(dealId) is not null
+                ? new AskResponse { Prompt = prompt, Status = "deal", DealId = dealId }
+                : new AskResponse { Prompt = prompt, Status = "unsupported", Message = _messages.DealNotFound };
+        }
+
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(_options.ServerTimeoutSeconds));
         var workflowToken = timeoutCts.Token;

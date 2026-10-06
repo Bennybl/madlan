@@ -13,4 +13,8 @@ public class DatasetFacts
     public IReadOnlyList<string> Neighborhoods { get; init; } = [];
 
     public IReadOnlyList<string> PropertyTypes { get; init; } = [];
+
+    public IReadOnlyList<string> Conditions { get; init; } = [];
+
+    public IReadOnlyList<string> Sources { get; init; } = [];
 }

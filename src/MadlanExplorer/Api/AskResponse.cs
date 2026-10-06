@@ -23,4 +23,6 @@ public class AskResponse
     public string? Summary { get; init; }
 
     public string? DatasetHash { get; init; }
+
+    public string? DealId { get; init; }
 }

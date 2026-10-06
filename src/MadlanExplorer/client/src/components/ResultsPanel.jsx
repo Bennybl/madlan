@@ -1,5 +1,6 @@
 import { describeFilters } from "../format.js";
 import ResultMetrics from "./ResultMetrics.jsx";
+import DealDetailCard from "./DealDetailCard.jsx";
 
 export default function ResultsPanel({ data }) {
   return (
@@ -8,6 +9,11 @@ export default function ResultsPanel({ data }) {
 
       {!data ? (
         <p className="hint">שאלו שאלה בצ'אט למעלה כדי לראות כאן את טבלת התוצאות המלאה שלה.</p>
+      ) : data.dealId ? (
+        <>
+          <p className="interpretation-line">השאלה: {data.prompt}</p>
+          <DealDetailCard dealId={data.dealId} />
+        </>
       ) : (
         <>
           <p className="interpretation-line">השאלה: {data.prompt}</p>

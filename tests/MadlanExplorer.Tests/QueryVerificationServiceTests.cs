@@ -174,6 +174,20 @@ public class QueryVerificationServiceTests
         Assert.Contains("פנטהאוז", provider.Request?.Prompt);
     }
 
+    [Fact]
+    public async Task Verify_includes_the_datasets_exact_condition_and_source_values_in_the_prompt()
+    {
+        var provider = new FakeLlmProvider();
+        provider.SetContent(LlmStage.QueryVerification, """{"outcome":"approved"}""");
+        var repository = new FakeDealRepository { Facts = new DatasetFacts { Conditions = ["חדש מקבלן"], Sources = ["בעל נכס"] } };
+        var service = CreateService(provider, repository);
+
+        await service.VerifyAsync("test", new DealFilters(), [], [], null, null, CancellationToken.None);
+
+        Assert.Contains("חדש מקבלן", provider.Request?.Prompt);
+        Assert.Contains("בעל נכס", provider.Request?.Prompt);
+    }
+
     private static QueryVerificationService CreateService(FakeLlmProvider provider, FakeDealRepository? repository = null)
     {
         var options = Options.Create(new LlmOptions { Models = new LlmModelsOptions { QueryVerification = "grok-verification-model" } });

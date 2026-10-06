@@ -186,6 +186,24 @@ public class QueryGenerationServiceTests
         Assert.Contains("דופלקס", provider.Request?.Prompt);
     }
 
+    [Fact]
+    public async Task Generate_includes_the_datasets_exact_condition_and_source_values_in_the_prompt()
+    {
+        var provider = new FakeLlmProvider();
+        var repository = new FakeDealRepository
+        {
+            Facts = new DatasetFacts { Conditions = ["חדש מקבלן", "משופץ"], Sources = ["בעל נכס", "מתווך"] }
+        };
+        var service = CreateService(provider, repository);
+
+        await service.GenerateAsync("test", CancellationToken.None);
+
+        Assert.Contains("חדש מקבלן", provider.Request?.Prompt);
+        Assert.Contains("משופץ", provider.Request?.Prompt);
+        Assert.Contains("בעל נכס", provider.Request?.Prompt);
+        Assert.Contains("מתווך", provider.Request?.Prompt);
+    }
+
     private static QueryGenerationService CreateService(FakeLlmProvider provider, FakeDealRepository? repository = null)
     {
         var options = Options.Create(new LlmOptions { Models = new LlmModelsOptions { QueryGeneration = "grok-test-model" } });

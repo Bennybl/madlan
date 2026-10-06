@@ -169,7 +169,9 @@ public class SqliteDealRepository : IDealRepository
             ConflictingDealCount = conflictingDealCount,
             Cities = ReadFilterValues(connection, "City"),
             Neighborhoods = ReadFilterValues(connection, "Neighborhood"),
-            PropertyTypes = ReadFilterValues(connection, "PropertyType")
+            PropertyTypes = ReadFilterValues(connection, "PropertyType"),
+            Conditions = ReadFilterValues(connection, "Condition"),
+            Sources = ReadFilterValues(connection, "Source")
         };
     }
 
@@ -236,7 +238,8 @@ public class SqliteDealRepository : IDealRepository
     {
         return $"""
             Filtered AS (
-                SELECT DealId, City, Neighborhood, PropertyType, Condition, Source, PriceNis, SizeSqm, Rooms, Floor, YearBuilt, SuppliedPricePerSqm
+                SELECT DealId, City, Neighborhood, PropertyType, Condition, Source, PriceNis, SizeSqm, Rooms, Floor, YearBuilt, SuppliedPricePerSqm,
+                       HasElevator, HasParking, HasBalcony, HasSafeRoom
                 FROM Deals
                 WHERE {FilterPredicate}
             )
@@ -566,6 +569,10 @@ public class SqliteDealRepository : IDealRepository
             GroupByField.Rooms => "Rooms",
             GroupByField.Floor => "Floor",
             GroupByField.YearBuilt => "YearBuilt",
+            GroupByField.HasElevator => "HasElevator",
+            GroupByField.HasParking => "HasParking",
+            GroupByField.HasBalcony => "HasBalcony",
+            GroupByField.HasSafeRoom => "HasSafeRoom",
             _ => throw new ArgumentOutOfRangeException(nameof(field), field, "Unsupported group-by field.")
         };
     }

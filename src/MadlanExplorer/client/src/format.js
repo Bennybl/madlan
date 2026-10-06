@@ -151,8 +151,19 @@ export const GROUP_BY_LABELS = {
   Source: "מקור",
   Rooms: "מספר חדרים",
   Floor: "קומה",
-  YearBuilt: "שנת בנייה"
+  YearBuilt: "שנת בנייה",
+  HasElevator: "מעלית",
+  HasParking: "חניה",
+  HasBalcony: "מרפסת",
+  HasSafeRoom: 'ממ"ד'
 };
+
+const BOOLEAN_GROUP_BY_FIELDS = new Set(["HasElevator", "HasParking", "HasBalcony", "HasSafeRoom"]);
+
+export function formatGroupValue(groupByField, groupValue) {
+  if (!BOOLEAN_GROUP_BY_FIELDS.has(groupByField)) return groupValue;
+  return groupValue === "1" ? "כן" : groupValue === "0" ? "לא" : groupValue;
+}
 
 export function formatDealDate(normalized) {
   if (!normalized.DealDateStart) return "לא דווח";

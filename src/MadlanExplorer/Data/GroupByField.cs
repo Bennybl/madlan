@@ -9,5 +9,9 @@ public enum GroupByField
     Source,
     Rooms,
     Floor,
-    YearBuilt
+    YearBuilt,
+    HasElevator,
+    HasParking,
+    HasBalcony,
+    HasSafeRoom
 }

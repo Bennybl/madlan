@@ -68,6 +68,10 @@ export default function ChatPanel({ onFiltersSuggested, onResult }) {
       if (response.status === "query" && response.result && onResult) {
         onResult({ prompt: trimmed, filters: response.filters, result: response.result });
       }
+
+      if (response.status === "deal" && response.dealId && onResult) {
+        onResult({ prompt: trimmed, dealId: response.dealId });
+      }
     } catch (error) {
       setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", error: error.message }]);
     } finally {

@@ -20,6 +20,16 @@ export default function MessageBubble({ message }) {
   const response = message.response;
   if (!response) return null;
 
+  if (response.status === "deal") {
+    return (
+      <div className="chat-message chat-message-assistant">
+        <div className="chat-bubble chat-bubble-assistant">
+          <p className="verified-summary">נמצאה עסקה {response.dealId}. פרטי העסקה המלאים מוצגים בטבלת התוצאות מתחת לצ'אט.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (response.status !== "query") {
     return (
       <div className="chat-message chat-message-assistant">

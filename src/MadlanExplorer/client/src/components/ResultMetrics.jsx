@@ -1,4 +1,4 @@
-import { NUMBER_FORMAT, formatCurrency, formatMetricValue, METRIC_LABELS, SINGLE_DEAL_METRICS, describeWarning, describeRankedMetric, GROUP_BY_LABELS, OUTLIER_FIELD_LABELS, formatOutlierValue } from "../format.js";
+import { NUMBER_FORMAT, formatCurrency, formatMetricValue, METRIC_LABELS, SINGLE_DEAL_METRICS, describeWarning, describeRankedMetric, GROUP_BY_LABELS, OUTLIER_FIELD_LABELS, formatOutlierValue, formatGroupValue } from "../format.js";
 import DealDetailCard from "./DealDetailCard.jsx";
 import EvidenceTable from "./EvidenceTable.jsx";
 
@@ -72,7 +72,7 @@ export default function ResultMetrics({ result }) {
           <div className="grouped-results-list">
             {groups.map((group) => (
               <article className="group-card" key={group.groupValue}>
-                <h5>{group.groupValue}</h5>
+                <h5>{formatGroupValue(result.groupBy, group.groupValue)}</h5>
                 <p className="metric-count">{NUMBER_FORMAT.format(group.transactionCount)} עסקאות</p>
                 {(group.requestedMetrics || []).map((metricResult) => (
                   <p key={metricResult.metric} className="group-metric-line">
@@ -111,7 +111,7 @@ export default function ResultMetrics({ result }) {
                   <ul className="outliers-list">
                     {fieldOutliers.map((outlier) => (
                       <li key={`${field}-${outlier.groupValue ?? "all"}-${outlier.dealId}`}>
-                        {outlier.groupValue && <strong>{outlier.groupValue}: </strong>}
+                        {outlier.groupValue && <strong>{formatGroupValue(result.groupBy, outlier.groupValue)}: </strong>}
                         עסקה {outlier.dealId} — {formatOutlierValue(field, outlier.value)}
                         {" "}(טווח טיפוסי: {formatOutlierValue(field, outlier.lowerBound)}
                         {" "}עד {formatOutlierValue(field, outlier.upperBound)})

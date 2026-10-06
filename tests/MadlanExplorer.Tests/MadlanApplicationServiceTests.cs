@@ -247,6 +247,34 @@ public class MadlanApplicationServiceTests
     }
 
     [Fact]
+    public async Task Ask_returns_the_deal_directly_when_the_prompt_names_a_known_deal_id_without_calling_the_llm()
+    {
+        var provider = new FakeLlmProvider();
+        var repository = new FakeDealRepository { Deal = new DealDetail { DealId = "D100027", ConflictStatus = "usable" } };
+        var service = CreateService(provider, repository);
+
+        var response = await service.AskAsync("תן לי את כל הפרטים של עסקה D100027", CancellationToken.None);
+
+        Assert.Equal("deal", response.Status);
+        Assert.Equal("D100027", response.DealId);
+        Assert.Empty(provider.Requests);
+    }
+
+    [Fact]
+    public async Task Ask_rejects_a_deal_id_shaped_prompt_that_does_not_match_a_real_deal()
+    {
+        var provider = new FakeLlmProvider();
+        var repository = new FakeDealRepository { Deal = null };
+        var service = CreateService(provider, repository);
+
+        var response = await service.AskAsync("תן לי את הפרטים של עסקה D999999", CancellationToken.None);
+
+        Assert.Equal("unsupported", response.Status);
+        Assert.NotNull(response.Message);
+        Assert.Empty(provider.Requests);
+    }
+
+    [Fact]
     public void GetDeal_returns_the_detail_the_repository_has_for_a_known_deal()
     {
         var detail = new DealDetail { DealId = "D100027", ConflictStatus = "usable" };

@@ -251,6 +251,17 @@ public class DatasetQueryTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public void Query_groups_by_a_boolean_amenity_field()
+    {
+        var result = QueryGrouped(new DealFilters(), GroupByField.HasElevator, metrics: [QueryMetric.AveragePrice]);
+
+        Assert.Equal(2, result.Groups.Count);
+        Assert.Contains(result.Groups, g => g.GroupValue == "1");
+        Assert.Contains(result.Groups, g => g.GroupValue == "0");
+        Assert.All(result.Groups, g => Assert.True(g.TransactionCount > 0));
+    }
+
+    [Fact]
     public void Query_computes_outliers_independently_per_group()
     {
         var result = QueryOutliers(new DealFilters(), OutlierField.Price, GroupByField.City);
