@@ -31,4 +31,8 @@ public class DealQueryResult
     public GroupByField? GroupBy { get; init; }
 
     public IReadOnlyList<GroupedQueryResult> Groups { get; init; } = [];
+
+    public OutlierField? OutlierField { get; init; }
+
+    public IReadOnlyList<OutlierResult> Outliers { get; init; } = [];
 }

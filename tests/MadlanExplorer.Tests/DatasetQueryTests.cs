@@ -208,6 +208,46 @@ public class DatasetQueryTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public void Query_flags_values_outside_the_interquartile_fence_as_outliers()
+    {
+        var result = QueryOutliers(new DealFilters(), OutlierField.Price);
+
+        Assert.NotEmpty(result.Outliers);
+        foreach (var outlier in result.Outliers)
+        {
+            Assert.True(outlier.Value < outlier.LowerBound || outlier.Value > outlier.UpperBound);
+            Assert.True(outlier.LowerBound < outlier.UpperBound);
+        }
+
+        var dealIds = result.Outliers.Select(o => o.DealId).ToList();
+        Assert.Equal(dealIds.Distinct().Count(), dealIds.Count);
+    }
+
+    [Fact]
+    public void Query_computes_outliers_against_only_the_filtered_sample()
+    {
+        var result = QueryOutliers(new DealFilters { City = "חולון" }, OutlierField.Price);
+
+        foreach (var outlier in result.Outliers)
+        {
+            Assert.True(outlier.Value < outlier.LowerBound || outlier.Value > outlier.UpperBound);
+        }
+    }
+
+    [Fact]
+    public void Query_computes_outliers_independently_per_group()
+    {
+        var result = QueryOutliers(new DealFilters(), OutlierField.Price, GroupByField.City);
+
+        Assert.NotEmpty(result.Outliers);
+        Assert.Equal(GroupByField.City, result.GroupBy);
+        foreach (var outlier in result.Outliers)
+        {
+            Assert.NotNull(outlier.GroupValue);
+        }
+    }
+
+    [Fact]
     public void Query_filters_by_boolean_amenity_columns()
     {
         var withElevator = Query(new DealFilters { HasElevator = true });
@@ -242,5 +282,11 @@ public class DatasetQueryTests : IClassFixture<WebApplicationFactory<Program>>
         using var scope = _factory.Services.CreateScope();
         var requests = (rankedMetrics ?? []).Select(r => new RankedMetricRequest { Metric = r.Metric, Rank = r.Rank }).ToList();
         return scope.ServiceProvider.GetRequiredService<QueryService>().Query(filters, metrics ?? [], requests, groupBy);
+    }
+
+    private DealQueryResult QueryOutliers(DealFilters filters, OutlierField outlierField, GroupByField? groupBy = null)
+    {
+        using var scope = _factory.Services.CreateScope();
+        return scope.ServiceProvider.GetRequiredService<QueryService>().Query(filters, groupBy: groupBy, outlierField: outlierField);
     }
 }

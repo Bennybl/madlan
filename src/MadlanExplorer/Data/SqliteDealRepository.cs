@@ -117,6 +117,10 @@ public class SqliteDealRepository : IDealRepository
             ? ComputeGroups(connection, filters, groupByField, query.Metrics, query.RankedMetrics)
             : [];
 
+        var outliers = query.OutlierField is { } outlierField
+            ? ComputeOutliers(connection, filters, outlierField, query.GroupBy)
+            : [];
+
         return new DealQueryResult
         {
             TransactionCount = transactionCount,
@@ -132,7 +136,9 @@ public class SqliteDealRepository : IDealRepository
             RequestedMetrics = requestedMetrics,
             RankedMetrics = rankedMetrics,
             GroupBy = query.GroupBy,
-            Groups = groups
+            Groups = groups,
+            OutlierField = query.OutlierField,
+            Outliers = outliers
         };
     }
 
@@ -459,6 +465,90 @@ public class SqliteDealRepository : IDealRepository
         }
 
         return results;
+    }
+
+    private const int MaxOutliers = 200;
+
+    /// <summary>
+    /// Flags deals whose value for a field falls outside Q1 - 1.5*IQR .. Q3 + 1.5*IQR (the
+    /// standard Tukey fence), computed within each group (or the whole filtered sample when
+    /// groupBy is null) using the same nearest-rank percentile technique already used for the
+    /// median. This is a distribution-agnostic outlier rule, not a test of normality -- it never
+    /// claims to determine whether the data follows a normal distribution.
+    /// </summary>
+    private static List<OutlierResult> ComputeOutliers(SqliteConnection connection, DealFilters filters, OutlierField field, GroupByField? groupBy)
+    {
+        var (expression, condition) = DescribeOutlierField(field);
+        var partitionColumn = groupBy is { } groupByField ? DescribeGroupByColumn(groupByField) : null;
+        var groupValueSelect = partitionColumn is not null ? partitionColumn : "NULL";
+        var groupFilter = partitionColumn is not null ? $"AND {partitionColumn} IS NOT NULL" : "";
+        const string partitionClause = "PARTITION BY GroupValue";
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            WITH {BuildFilteredCte()},
+            Measured AS (
+                SELECT DealId, {groupValueSelect} AS GroupValue, {expression} AS Value
+                FROM Filtered
+                WHERE {condition} {groupFilter}
+            ),
+            Ranked AS (
+                SELECT DealId, GroupValue, Value,
+                       ROW_NUMBER() OVER ({partitionClause} ORDER BY Value) AS Position,
+                       COUNT(*) OVER ({partitionClause}) AS Total
+                FROM Measured
+            ),
+            Quartiles AS (
+                SELECT GroupValue,
+                       MAX(CASE WHEN Position = CAST(ROUND(0.25 * Total) AS INTEGER) THEN Value END) AS Q1,
+                       MAX(CASE WHEN Position = CAST(ROUND(0.75 * Total) AS INTEGER) THEN Value END) AS Q3
+                FROM Ranked
+                GROUP BY GroupValue
+            )
+            SELECT r.GroupValue, r.DealId, r.Value,
+                   q.Q1 - 1.5 * (q.Q3 - q.Q1) AS LowerBound,
+                   q.Q3 + 1.5 * (q.Q3 - q.Q1) AS UpperBound
+            FROM Ranked r
+            JOIN Quartiles q ON r.GroupValue IS q.GroupValue
+            WHERE q.Q1 IS NOT NULL AND q.Q3 IS NOT NULL
+              AND (r.Value < q.Q1 - 1.5 * (q.Q3 - q.Q1) OR r.Value > q.Q3 + 1.5 * (q.Q3 - q.Q1))
+            ORDER BY r.GroupValue, r.Value
+            LIMIT {MaxOutliers};
+            """;
+        AddFilterParameters(command, filters);
+
+        using var reader = command.ExecuteReader();
+        var results = new List<OutlierResult>();
+        while (reader.Read())
+        {
+            results.Add(new OutlierResult
+            {
+                GroupValue = reader.IsDBNull(0) ? null : Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture),
+                DealId = reader.GetString(1),
+                Value = Convert.ToDecimal(reader.GetDouble(2)),
+                LowerBound = Convert.ToDecimal(reader.GetDouble(3)),
+                UpperBound = Convert.ToDecimal(reader.GetDouble(4))
+            });
+        }
+
+        return results;
+    }
+
+    private static (string Expression, string Condition) DescribeOutlierField(OutlierField field)
+    {
+        var metric = field switch
+        {
+            OutlierField.Price => QueryMetric.AveragePrice,
+            OutlierField.PricePerSqm => QueryMetric.AveragePricePerSqm,
+            OutlierField.SizeSqm => QueryMetric.AverageSizeSqm,
+            OutlierField.Rooms => QueryMetric.AverageRooms,
+            OutlierField.Floor => QueryMetric.AverageFloor,
+            OutlierField.YearBuilt => QueryMetric.AverageYearBuilt,
+            _ => throw new ArgumentOutOfRangeException(nameof(field), field, "Unsupported outlier field.")
+        };
+
+        var (expression, condition, _) = DescribeMetric(metric);
+        return (expression, condition);
     }
 
     private static string DescribeGroupByColumn(GroupByField field)

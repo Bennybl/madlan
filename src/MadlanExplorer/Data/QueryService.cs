@@ -13,12 +13,20 @@ public class QueryService
         DealFilters filters,
         IReadOnlyList<QueryMetric>? metrics = null,
         IReadOnlyList<RankedMetricRequest>? rankedMetrics = null,
-        GroupByField? groupBy = null)
+        GroupByField? groupBy = null,
+        OutlierField? outlierField = null)
     {
         ValidateFilters(filters);
         var ranked = rankedMetrics ?? [];
         ValidateRankedMetrics(ranked);
-        return _dealRepository.Execute(new DealQuery { Filters = filters, Metrics = metrics ?? [], RankedMetrics = ranked, GroupBy = groupBy });
+        return _dealRepository.Execute(new DealQuery
+        {
+            Filters = filters,
+            Metrics = metrics ?? [],
+            RankedMetrics = ranked,
+            GroupBy = groupBy,
+            OutlierField = outlierField
+        });
     }
 
     public void Validate(DealFilters filters) => ValidateFilters(filters);

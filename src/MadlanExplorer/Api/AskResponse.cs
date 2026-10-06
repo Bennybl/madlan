@@ -16,6 +16,8 @@ public class AskResponse
 
     public GroupByField? GroupBy { get; init; }
 
+    public OutlierField? OutlierField { get; init; }
+
     public DealQueryResult? Result { get; init; }
 
     public string? Summary { get; init; }

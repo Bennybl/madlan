@@ -34,6 +34,15 @@ public static class CalculatedEvidence
                 transactionCount = g.TransactionCount,
                 requestedMetrics = g.RequestedMetrics.Select(m => new { metric = m.Metric, value = m.Value, dealId = m.DealId }),
                 rankedMetrics = g.RankedMetrics.Select(m => new { metric = m.Metric, rank = m.Rank, value = m.Value, dealId = m.DealId })
+            }),
+            outlierField = result.OutlierField,
+            outliers = result.Outliers.Select(o => new
+            {
+                groupValue = o.GroupValue,
+                dealId = o.DealId,
+                value = o.Value,
+                lowerBound = o.LowerBound,
+                upperBound = o.UpperBound
             })
         };
 
@@ -83,6 +92,11 @@ public static class CalculatedEvidence
             }
         }
 
+        foreach (var outlier in result.Outliers)
+        {
+            dealIds.Add(outlier.DealId);
+        }
+
         return dealIds;
     }
 
@@ -94,7 +108,7 @@ public static class CalculatedEvidence
     /// </summary>
     public static bool HasDealAnchoredMetric(DealQueryResult result)
     {
-        if (result.RequestedMetrics.Any(m => m.DealId is not null) || result.RankedMetrics.Any(m => m.DealId is not null))
+        if (result.RequestedMetrics.Any(m => m.DealId is not null) || result.RankedMetrics.Any(m => m.DealId is not null) || result.Outliers.Count > 0)
         {
             return true;
         }

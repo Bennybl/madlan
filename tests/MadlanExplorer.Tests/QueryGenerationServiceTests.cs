@@ -112,6 +112,28 @@ public class QueryGenerationServiceTests
     }
 
     [Fact]
+    public async Task Generate_returns_an_outlier_field_for_an_anomaly_question()
+    {
+        var provider = new FakeLlmProvider { Content = """{"outcome":"query","filters":{},"groupBy":"City","outlierField":"Price"}""" };
+        var service = CreateService(provider);
+
+        var response = await service.GenerateAsync("אילו דירות חריגות במחיר יש בכל עיר?", CancellationToken.None);
+
+        Assert.Equal("query", response.Status);
+        Assert.Equal(OutlierField.Price, response.OutlierField);
+        Assert.Equal(GroupByField.City, response.GroupBy);
+    }
+
+    [Fact]
+    public async Task Generate_rejects_an_unsupported_outlier_field()
+    {
+        var provider = new FakeLlmProvider { Content = """{"outcome":"query","filters":{},"outlierField":"NotAField"}""" };
+        var service = CreateService(provider);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.GenerateAsync("test", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Generate_rejects_an_unsupported_metric_name()
     {
         var provider = new FakeLlmProvider { Content = """{"outcome":"query","filters":{},"metrics":["NotARealMetric"]}""" };

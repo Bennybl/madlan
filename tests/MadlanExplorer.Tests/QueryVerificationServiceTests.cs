@@ -15,7 +15,7 @@ public class QueryVerificationServiceTests
         var service = CreateService(provider);
         const string prompt = "מה מחיר דירת ארבעה חדרים בחולון?";
 
-        var result = await service.VerifyAsync(prompt, new DealFilters { MinimumRooms = 4, MaximumRooms = 4 }, [], [], null, CancellationToken.None);
+        var result = await service.VerifyAsync(prompt, new DealFilters { MinimumRooms = 4, MaximumRooms = 4 }, [], [], null, null, CancellationToken.None);
 
         Assert.Equal("approved", result.Outcome);
         Assert.Equal(LlmStage.QueryVerification, provider.Request?.Stage);
@@ -29,7 +29,7 @@ public class QueryVerificationServiceTests
         provider.SetContent(LlmStage.QueryVerification, """{"outcome":"rejected","message":"The prompt asked for Holon but no city filter was proposed."}""");
         var service = CreateService(provider);
 
-        var result = await service.VerifyAsync("דירות בחולון", new DealFilters(), [], [], null, CancellationToken.None);
+        var result = await service.VerifyAsync("דירות בחולון", new DealFilters(), [], [], null, null, CancellationToken.None);
 
         Assert.Equal("rejected", result.Outcome);
         Assert.NotNull(result.Message);
@@ -42,7 +42,7 @@ public class QueryVerificationServiceTests
         provider.SetContent(LlmStage.QueryVerification, """{"outcome":"clarification","message":"Which neighborhood did you mean?"}""");
         var service = CreateService(provider);
 
-        var result = await service.VerifyAsync("דירות ברובע המרכזי", new DealFilters(), [], [], null, CancellationToken.None);
+        var result = await service.VerifyAsync("דירות ברובע המרכזי", new DealFilters(), [], [], null, null, CancellationToken.None);
 
         Assert.Equal("clarification", result.Outcome);
         Assert.Equal("Which neighborhood did you mean?", result.Message);
@@ -60,6 +60,7 @@ public class QueryVerificationServiceTests
             new DealFilters { City = "חולון" },
             [QueryMetric.AveragePrice, QueryMetric.MedianPrice],
             [],
+            null,
             null,
             CancellationToken.None);
 
@@ -81,6 +82,7 @@ public class QueryVerificationServiceTests
             [],
             [new RankedMetricRequest { Metric = QueryMetric.MaxPrice, Rank = 2 }],
             null,
+            null,
             CancellationToken.None);
 
         Assert.Equal("approved", result.Outcome);
@@ -100,10 +102,31 @@ public class QueryVerificationServiceTests
             [],
             [new RankedMetricRequest { Metric = QueryMetric.MinPrice, Rank = 1 }],
             GroupByField.City,
+            null,
             CancellationToken.None);
 
         Assert.Equal("approved", result.Outcome);
         Assert.Contains("City", provider.Request?.Prompt);
+    }
+
+    [Fact]
+    public async Task Verify_includes_a_proposed_outlier_field_in_the_prompt()
+    {
+        var provider = new FakeLlmProvider();
+        provider.SetContent(LlmStage.QueryVerification, """{"outcome":"approved"}""");
+        var service = CreateService(provider);
+
+        var result = await service.VerifyAsync(
+            "מה הדירות החריגות במחיר בכל עיר?",
+            new DealFilters(),
+            [],
+            [],
+            GroupByField.City,
+            OutlierField.Price,
+            CancellationToken.None);
+
+        Assert.Equal("approved", result.Outcome);
+        Assert.Contains("Price", provider.Request?.Prompt);
     }
 
     [Fact]
@@ -113,7 +136,7 @@ public class QueryVerificationServiceTests
         provider.SetContent(LlmStage.QueryVerification, "not-json");
         var service = CreateService(provider);
 
-        await Assert.ThrowsAsync<JsonException>(() => service.VerifyAsync("test", new DealFilters(), [], [], null, CancellationToken.None));
+        await Assert.ThrowsAsync<JsonException>(() => service.VerifyAsync("test", new DealFilters(), [], [], null, null, CancellationToken.None));
     }
 
     [Fact]
@@ -123,7 +146,7 @@ public class QueryVerificationServiceTests
         provider.SetContent(LlmStage.QueryVerification, """{"outcome":"maybe"}""");
         var service = CreateService(provider);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.VerifyAsync("test", new DealFilters(), [], [], null, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.VerifyAsync("test", new DealFilters(), [], [], null, null, CancellationToken.None));
     }
 
     [Fact]
@@ -133,7 +156,7 @@ public class QueryVerificationServiceTests
         var options = Options.Create(new LlmOptions());
         var service = new QueryVerificationService(provider, options, new FakeDealRepository());
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.VerifyAsync("test", new DealFilters(), [], [], null, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.VerifyAsync("test", new DealFilters(), [], [], null, null, CancellationToken.None));
         Assert.Empty(provider.Requests);
     }
 
@@ -145,7 +168,7 @@ public class QueryVerificationServiceTests
         var repository = new FakeDealRepository { Facts = new DatasetFacts { PropertyTypes = ["דירה", "פנטהאוז"] } };
         var service = CreateService(provider, repository);
 
-        await service.VerifyAsync("test", new DealFilters(), [], [], null, CancellationToken.None);
+        await service.VerifyAsync("test", new DealFilters(), [], [], null, null, CancellationToken.None);
 
         Assert.Contains("דירה", provider.Request?.Prompt);
         Assert.Contains("פנטהאוז", provider.Request?.Prompt);

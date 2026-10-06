@@ -1,4 +1,4 @@
-import { NUMBER_FORMAT, formatCurrency, formatMetricValue, METRIC_LABELS, SINGLE_DEAL_METRICS, describeWarning, describeRankedMetric, GROUP_BY_LABELS } from "../format.js";
+import { NUMBER_FORMAT, formatCurrency, formatMetricValue, METRIC_LABELS, SINGLE_DEAL_METRICS, describeWarning, describeRankedMetric, GROUP_BY_LABELS, OUTLIER_FIELD_LABELS, formatOutlierValue } from "../format.js";
 import DealDetailCard from "./DealDetailCard.jsx";
 import EvidenceTable from "./EvidenceTable.jsx";
 
@@ -12,6 +12,7 @@ export default function ResultMetrics({ result }) {
   const requestedMetrics = result.requestedMetrics || [];
   const rankedMetrics = result.rankedMetrics || [];
   const groups = result.groups || [];
+  const outliers = result.outliers || [];
   const singleDealMetrics = requestedMetrics.filter((m) => SINGLE_DEAL_METRICS.has(m.metric) && m.dealId);
 
   return (
@@ -88,6 +89,31 @@ export default function ResultMetrics({ result }) {
               </article>
             ))}
           </div>
+        </div>
+      )}
+
+      {result.outlierField && (
+        <div className="outliers-panel">
+          <h4>חריגים — {OUTLIER_FIELD_LABELS[result.outlierField] || result.outlierField}</h4>
+          <p className="hint">
+            חריג מוגדר כאן כערך הרחוק מהטווח הטיפוסי (שיטת הטווח הבין-רבעוני, IQR) בתוך כל קבוצה
+            {result.groupBy ? ` (${GROUP_BY_LABELS[result.groupBy] || result.groupBy})` : ""}; זו אינה בדיקה סטטיסטית
+            פורמלית של התאמה להתפלגות נורמלית.
+          </p>
+          {outliers.length === 0 ? (
+            <p className="hint">לא נמצאו חריגים במדגם התואם.</p>
+          ) : (
+            <ul className="outliers-list">
+              {outliers.map((outlier) => (
+                <li key={`${outlier.groupValue ?? "all"}-${outlier.dealId}`}>
+                  {outlier.groupValue && <strong>{outlier.groupValue}: </strong>}
+                  עסקה {outlier.dealId} — {formatOutlierValue(result.outlierField, outlier.value)}
+                  {" "}(טווח טיפוסי: {formatOutlierValue(result.outlierField, outlier.lowerBound)}
+                  {" "}עד {formatOutlierValue(result.outlierField, outlier.upperBound)})
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 

@@ -127,6 +127,22 @@ export function describeLocalityMethod(method) {
   }
 }
 
+export const OUTLIER_FIELD_LABELS = {
+  Price: "מחיר (₪)",
+  PricePerSqm: 'מחיר למ"ר (₪)',
+  SizeSqm: 'שטח (מ"ר)',
+  Rooms: "מספר חדרים",
+  Floor: "קומה",
+  YearBuilt: "שנת בנייה"
+};
+
+const OUTLIER_CURRENCY_FIELDS = new Set(["Price", "PricePerSqm"]);
+
+export function formatOutlierValue(field, value) {
+  if (value === null || value === undefined) return "—";
+  return OUTLIER_CURRENCY_FIELDS.has(field) ? formatCurrency(value) : NUMBER_FORMAT.format(value);
+}
+
 export const GROUP_BY_LABELS = {
   City: "עיר",
   Neighborhood: "שכונה",

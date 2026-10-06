@@ -13,4 +13,6 @@ public class QueryGenerationOutput
     public IReadOnlyList<RankedMetricSpec>? RankedMetrics { get; init; }
 
     public string? GroupBy { get; init; }
+
+    public string? OutlierField { get; init; }
 }

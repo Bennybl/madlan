@@ -109,6 +109,26 @@ public class ResultSummaryServiceTests
     }
 
     [Fact]
+    public async Task Summarize_includes_outliers_in_the_evidence_sent_to_the_model()
+    {
+        var provider = new FakeLlmProvider();
+        provider.SetContent(LlmStage.ResultSummary, """{"summary":"נמצאה עסקה חריגה D1.","referencedDealIds":["D1"]}""");
+        var service = CreateService(provider);
+        var result = new DealQueryResult
+        {
+            TransactionCount = 5,
+            OutlierField = OutlierField.Price,
+            Outliers = [new OutlierResult { DealId = "D1", Value = 18000m, LowerBound = 500000m, UpperBound = 9000000m }]
+        };
+
+        await service.SummarizeAsync("שאלה", new DealFilters(), "hash-abc123", result, CancellationToken.None);
+
+        var sentPrompt = provider.Request!.Prompt;
+        Assert.Contains("\"dealId\":\"D1\"", sentPrompt);
+        Assert.Contains("\"lowerBound\":500000", sentPrompt);
+    }
+
+    [Fact]
     public async Task Summarize_allows_empty_references_for_an_empty_result()
     {
         var provider = new FakeLlmProvider();

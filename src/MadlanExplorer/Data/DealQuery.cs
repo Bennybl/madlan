@@ -11,4 +11,6 @@ public class DealQuery
     public IReadOnlyList<RankedMetricRequest> RankedMetrics { get; init; } = [];
 
     public GroupByField? GroupBy { get; init; }
+
+    public OutlierField? OutlierField { get; init; }
 }

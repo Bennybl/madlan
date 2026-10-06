@@ -136,6 +136,17 @@ public class QueryGenerationService
             groupBy = parsedGroupBy;
         }
 
+        OutlierField? outlierField = null;
+        if (!string.IsNullOrWhiteSpace(output.OutlierField))
+        {
+            if (!Enum.TryParse(output.OutlierField, ignoreCase: true, out OutlierField parsedOutlierField))
+            {
+                throw new InvalidOperationException("The model returned an unsupported outlier field.");
+            }
+
+            outlierField = parsedOutlierField;
+        }
+
         return new AskResponse
         {
             Prompt = prompt,
@@ -144,7 +155,8 @@ public class QueryGenerationService
             Filters = filters,
             Metrics = metrics,
             RankedMetrics = rankedMetrics,
-            GroupBy = groupBy
+            GroupBy = groupBy,
+            OutlierField = outlierField
         };
     }
 
@@ -178,6 +190,7 @@ public class QueryGenerationService
         var supportedMetrics = string.Join(", ", Enum.GetNames<QueryMetric>());
         var rankableMetrics = string.Join(", ", QueryMetrics.Rankable.Select(metric => metric.ToString()));
         var groupByFields = string.Join(", ", Enum.GetNames<GroupByField>());
+        var outlierFields = string.Join(", ", Enum.GetNames<OutlierField>());
         var propertyTypes = _dealRepository.GetDatasetFacts().PropertyTypes;
         var propertyTypesText = string.Join(", ", propertyTypes.Select(type => $"\"{type}\""));
 
@@ -194,12 +207,13 @@ public class QueryGenerationService
             "The cheapest or lowest-priced matching transaction means MinPrice; the most expensive means MaxPrice; the largest or smallest apartment means MaxSizeSqm or MinSizeSqm; a typical or average value means the matching Average* metric; a middle or median value means the matching Median* metric. Price-per-square-meter, room-count, floor, and year-built have the same Min/Max/Average/Median options. " +
             $"Also choose zero or more ranked metrics for a question asking for the Nth highest or lowest value of something, such as \"the second most expensive\" or \"the third cheapest\" or \"the second largest\" -- a ranked metric is one of these exact names only: {rankableMetrics}, paired with a rank (a positive whole number: 1 means the single most extreme value, same as naming that plain metric directly; 2 means the next one; and so on). \"Most expensive\" alone is rank 1 of MaxPrice (use the plain metrics list above for that, not a ranked metric, unless the question also names a later one of a sequence, e.g. \"the most expensive and the second most expensive\" needs MaxPrice both as a plain metric with rank omitted and as a ranked metric with rank 2). Only Min/Max-style metrics can be ranked; Average, Median, and TransactionCount have no single Nth matching deal and must never appear as a ranked metric. " +
             $"Also choose a groupBy field when the question asks for a breakdown per category instead of one overall answer -- phrases like \"in every city\", \"per neighborhood\", \"for each property type\", \"broken down by condition\" -- set groupBy to the exact matching name from this list only: {groupByFields}. When set, every metric and ranked metric above is computed separately within each distinct value of that field (so \"the cheapest apartment in every city\" is groupBy=City plus a MinPrice metric, returning one cheapest-apartment answer per city, not one global answer). Omit groupBy when the question has no per-category breakdown; a plain filter naming one specific city or neighborhood is not a breakdown and needs no groupBy. " +
-            "This system answers historical statistics over the supplied sample only, computed deterministically from these exact filters, this exact metric list, and (if set) this one grouping field; it never predicts a future price, appraises a specific named property, or computes anything outside this list. " +
+            $"Also choose an outlierField when the question asks to find unusual, anomalous, or outlying values -- \"outliers\", \"values that don't fit the typical pattern\", \"values far from normal\" -- for one of these exact fields only: {outlierFields}. This computes, within each group when groupBy is also set (or across the whole filtered sample otherwise), the interquartile range (Q1 to Q3) and flags every deal whose value falls below Q1-1.5x(Q3-Q1) or above Q3+1.5x(Q3-Q1) -- the standard distance-based outlier rule. This is NOT a formal statistical test of normality (such as Shapiro-Wilk) and never claims one was performed; if the question explicitly asks for a normality test rather than flagging unusual values, that specific request is unsupported, but a request to find outliers/anomalies in the data (including phrased as \"values that don't fit a normal distribution\", which in practice means the same thing: find the unusual ones) should still be treated as an outlierField request, not rejected. Omit outlierField when the question does not ask to find anomalous values. " +
+            "This system answers historical statistics over the supplied sample only, computed deterministically from these exact filters, this exact metric list, and (if set) this one grouping field or this one outlier field; it never predicts a future price, appraises a specific named property, or computes anything outside this list. " +
             "A question asking for any of the statistics above, including one naming a specific past or current year, is supported and must produce outcome \"query\", never \"unsupported\". " +
             "Use outcome \"unsupported\" for requests this system cannot do at all: future price predictions, property valuations or appraisals, investment advice, a statistic outside the metric list above, or a question unrelated to this dataset as described above. " +
             "Use outcome \"clarification\" only when the question itself is genuinely ambiguous, such as a neighborhood name that could match more than one place, and explain in the message what additional detail is needed. " +
             $"The current date in Israel is {currentIsraelDate:yyyy-MM-dd}; resolve a relative date such as \"last year\" or \"this year\" against it. " +
-            "Return JSON with outcome (query, clarification, unsupported), message (a short Hebrew explanation, required whenever outcome is not query), filters (required only when outcome is query), metrics (a JSON array of zero or more exact names from the list above; omit or leave empty when only the transaction count is needed), rankedMetrics (a JSON array of zero or more {\"metric\": name, \"rank\": N} objects as described above; omit or leave empty when no Nth-highest/lowest value was asked for), and groupBy (one exact name from the group-by list above, or omit entirely when the question has no per-category breakdown). " +
+            "Return JSON with outcome (query, clarification, unsupported), message (a short Hebrew explanation, required whenever outcome is not query), filters (required only when outcome is query), metrics (a JSON array of zero or more exact names from the list above; omit or leave empty when only the transaction count is needed), rankedMetrics (a JSON array of zero or more {\"metric\": name, \"rank\": N} objects as described above; omit or leave empty when no Nth-highest/lowest value was asked for), groupBy (one exact name from the group-by list above, or omit entirely when the question has no per-category breakdown), and outlierField (one exact name from the outlier-field list above, or omit entirely when the question does not ask to find anomalous values). " +
             $"User prompt: {prompt}";
     }
 }
