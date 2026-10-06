@@ -42,7 +42,10 @@ export default function MessageBubble({ message }) {
     <div className="chat-message chat-message-assistant">
       <div className="chat-bubble chat-bubble-assistant">
         {response.summary ? (
-          <p className="verified-summary">{response.summary}</p>
+          <>
+            <p className="verified-summary">{response.summary}</p>
+            {response.message && <p className="hint">⚠ {response.message}</p>}
+          </>
         ) : (
           <p className="hint">{response.message || "סיכום מאומת אינו זמין כעת. ראו את שלבי הבדיקה בטבלת התוצאות מתחת לצ'אט."}</p>
         )}

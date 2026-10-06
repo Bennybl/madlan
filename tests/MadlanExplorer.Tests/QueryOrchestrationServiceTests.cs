@@ -116,7 +116,7 @@ public class QueryOrchestrationServiceTests
     }
 
     [Fact]
-    public async Task RunAsync_falls_back_to_no_summary_when_final_verification_rejects()
+    public async Task RunAsync_still_shows_the_grounded_summary_with_a_caveat_when_final_verification_rejects()
     {
         var provider = new FakeLlmProvider();
         provider.SetContent(LlmStage.Agent, """{"outcome":"final","summary":"סיכום כלשהו.","referencedDealIds":[]}""");
@@ -126,12 +126,12 @@ public class QueryOrchestrationServiceTests
         var result = await service.RunAsync("test", CancellationToken.None);
 
         Assert.Equal("query", result.Status);
-        Assert.Null(result.Summary);
-        Assert.False(string.IsNullOrWhiteSpace(result.Message));
+        Assert.Equal("סיכום כלשהו.", result.Summary);
+        Assert.Equal("Answers a different question.", result.Message);
     }
 
     [Fact]
-    public async Task RunAsync_stops_after_the_iteration_budget_and_reports_unsupported()
+    public async Task RunAsync_stops_after_the_iteration_budget_and_shows_the_gathered_steps()
     {
         var provider = new FakeLlmProvider { Content = """{"outcome":"query","query":{"aggregate":"count"}}""" };
         var repository = new FakeDealRepository { DataResult = new DataQueryResult { TransactionCount = 1 } };
@@ -139,7 +139,8 @@ public class QueryOrchestrationServiceTests
 
         var result = await service.RunAsync("test", CancellationToken.None);
 
-        Assert.Equal("unsupported", result.Status);
+        Assert.Equal("query", result.Status);
+        Assert.Null(result.Summary);
         Assert.False(string.IsNullOrWhiteSpace(result.Message));
         Assert.Equal(10, result.Steps.Count);
         Assert.Equal(10, provider.Requests.Count);
@@ -163,12 +164,47 @@ public class QueryOrchestrationServiceTests
     }
 
     [Fact]
-    public async Task RunAsync_rejects_an_unsupported_group_by_field_in_a_requested_query()
+    public async Task RunAsync_falls_back_gracefully_when_a_requested_query_names_an_unsupported_group_by_field()
     {
         var provider = new FakeLlmProvider { Content = """{"outcome":"query","query":{"groupBy":"NotAField","aggregate":"count"}}""" };
         var service = CreateService(provider, new FakeDealRepository());
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.RunAsync("test", CancellationToken.None));
+        var result = await service.RunAsync("test", CancellationToken.None);
+
+        Assert.Equal("unsupported", result.Status);
+        Assert.False(string.IsNullOrWhiteSpace(result.Message));
+        Assert.Empty(result.Steps);
+    }
+
+    [Fact]
+    public async Task RunAsync_shows_steps_already_gathered_when_a_later_iteration_fails_unexpectedly()
+    {
+        var provider = new FakeLlmProvider();
+        provider.SetContentSequence(
+            LlmStage.Agent,
+            """{"outcome":"query","query":{"aggregate":"count"}}""",
+            """{"outcome":"query","query":{"groupBy":"NotAField","aggregate":"count"}}""");
+        var repository = new FakeDealRepository { DataResult = new DataQueryResult { TransactionCount = 3 } };
+        var service = CreateService(provider, repository);
+
+        var result = await service.RunAsync("test", CancellationToken.None);
+
+        Assert.Equal("query", result.Status);
+        Assert.Null(result.Summary);
+        Assert.False(string.IsNullOrWhiteSpace(result.Message));
+        Assert.Single(result.Steps);
+    }
+
+    [Fact]
+    public async Task RunAsync_falls_back_gracefully_when_the_agent_returns_malformed_json()
+    {
+        var provider = new FakeLlmProvider { Content = "not-json" };
+        var service = CreateService(provider, new FakeDealRepository());
+
+        var result = await service.RunAsync("test", CancellationToken.None);
+
+        Assert.Equal("unsupported", result.Status);
+        Assert.False(string.IsNullOrWhiteSpace(result.Message));
     }
 
     [Fact]

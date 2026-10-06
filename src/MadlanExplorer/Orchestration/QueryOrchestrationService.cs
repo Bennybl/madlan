@@ -56,57 +56,78 @@ public class QueryOrchestrationService
         for (var iteration = 0; iteration < MaxIterations; iteration++)
         {
             var remainingBudget = MaxIterations - iteration;
-            var request = new LlmRequest
-            {
-                Stage = LlmStage.Agent,
-                Model = agentModel,
-                Prompt = BuildAgentPrompt(prompt, steps, remainingBudget)
-            };
+            AgentAction action;
 
-            var response = await _provider.CompleteAsync(request, cancellationToken);
-            var action = JsonSerializer.Deserialize<AgentAction>(response.Content, SerializerOptions)
-                ?? throw new InvalidOperationException("The agent model returned invalid JSON.");
+            try
+            {
+                var request = new LlmRequest
+                {
+                    Stage = LlmStage.Agent,
+                    Model = agentModel,
+                    Prompt = BuildAgentPrompt(prompt, steps, remainingBudget)
+                };
+
+                var response = await _provider.CompleteAsync(request, cancellationToken);
+                action = JsonSerializer.Deserialize<AgentAction>(response.Content, SerializerOptions)
+                    ?? throw new InvalidOperationException("The agent model returned invalid JSON.");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                // A single malformed/unparseable response from one iteration should not crash the
+                // whole request when steps gathered so far are still real, useful, computed data --
+                // show them plainly rather than failing the entire question outright.
+                return BuildFallbackResult(steps, "התרחשה שגיאה בעיבוד השאלה. מוצגות התוצאות שחושבו עד כה.");
+            }
 
             switch (action.Outcome)
             {
                 case "query":
                 {
-                    var query = ParseQuery(action.Query ?? throw new InvalidOperationException("The agent requested a query but did not describe one."));
-                    query = ResolveCityTypo(query);
-                    var result = _queryService.ExecuteDataQuery(query);
-                    steps.Add(new QueryStep { Query = query, Result = result });
+                    try
+                    {
+                        var query = ParseQuery(action.Query ?? throw new InvalidOperationException("The agent requested a query but did not describe one."));
+                        query = ResolveCityTypo(query);
+                        var result = _queryService.ExecuteDataQuery(query);
+                        steps.Add(new QueryStep { Query = query, Result = result });
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+                    {
+                        return BuildFallbackResult(steps, "התרחשה שגיאה בעיבוד השאלה. מוצגות התוצאות שחושבו עד כה.");
+                    }
+
                     continue;
                 }
 
                 case "final":
                 {
-                    const string summaryUnavailableMessage = "סיכום מאומת אינו זמין כעת. מוצגות התוצאות המחושבות בלבד.";
-                    string? summary = null;
-                    string? message = summaryUnavailableMessage;
+                    var candidate = action.Summary;
+                    var referencedDealIds = action.ReferencedDealIds ?? [];
+                    var knownDealIds = KnownDealIds(steps);
 
+                    if (candidate is null || referencedDealIds.Any(id => !knownDealIds.Contains(id)))
+                    {
+                        // A missing summary or a reference to a deal ID never actually returned by any
+                        // gathered query is a hard, non-negotiable grounding failure -- show the real
+                        // data with no narrative at all rather than risk a fabricated claim.
+                        return BuildFallbackResult(steps, "סיכום מאומת אינו זמין כעת. מוצגות התוצאות המחושבות בלבד.");
+                    }
+
+                    string? verificationNote;
                     try
                     {
-                        var candidate = action.Summary ?? throw new InvalidOperationException("The agent gave a final answer with no summary.");
-                        var referencedDealIds = action.ReferencedDealIds ?? [];
-                        var knownDealIds = KnownDealIds(steps);
-                        if (referencedDealIds.Any(id => !knownDealIds.Contains(id)))
-                        {
-                            throw new InvalidOperationException("The agent referenced a deal ID that was never returned by any gathered query.");
-                        }
-
-                        if (await VerifyFinalAnswerAsync(prompt, steps, candidate, cancellationToken))
-                        {
-                            summary = candidate;
-                            message = null;
-                        }
+                        var (approved, verificationMessage) = await VerifyFinalAnswerAsync(prompt, steps, candidate, cancellationToken);
+                        verificationNote = approved ? null : verificationMessage ?? "הסיכום לא עבר אימות מלא; ייתכן שאינו משקף את הנתונים בצורה מלאה.";
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                     {
-                        summary = null;
-                        message = summaryUnavailableMessage;
+                        verificationNote = "לא ניתן היה לאמת את הסיכום באופן מלא.";
                     }
 
-                    return new OrchestrationResult { Status = "query", Summary = summary, Message = message, Steps = steps };
+                    // The candidate always comes from the model's own reasoning, grounded in deal IDs
+                    // that genuinely exist in the gathered evidence (checked above). A failed/unavailable
+                    // LLM sanity check downgrades confidence -- it should not silently hide a real,
+                    // grounded answer, since the user still needs a plain-text summary of what was found.
+                    return new OrchestrationResult { Status = "query", Summary = candidate, Message = verificationNote, Steps = steps };
                 }
 
                 case "clarification":
@@ -116,16 +137,16 @@ public class QueryOrchestrationService
                     return new OrchestrationResult { Status = "unsupported", Message = action.Message, Steps = steps };
 
                 default:
-                    throw new InvalidOperationException("The agent model returned an unsupported outcome.");
+                    return BuildFallbackResult(steps, "התרחשה שגיאה בעיבוד השאלה. מוצגות התוצאות שחושבו עד כה.");
             }
         }
 
-        return new OrchestrationResult
-        {
-            Status = "unsupported",
-            Message = "לא הצלחתי להשלים תשובה מלאה בתוך מספר הצעדים המותר. נסו לנסח את השאלה בצורה פשוטה יותר.",
-            Steps = steps
-        };
+        return BuildFallbackResult(steps, "לא הצלחתי להשלים תשובה מלאה בתוך מספר הצעדים המותר. נסו לנסח את השאלה בצורה פשוטה יותר.");
+    }
+
+    private static OrchestrationResult BuildFallbackResult(IReadOnlyList<QueryStep> steps, string message)
+    {
+        return new OrchestrationResult { Status = steps.Count > 0 ? "query" : "unsupported", Message = message, Steps = steps };
     }
 
     private DataQuery ResolveCityTypo(DataQuery query)
@@ -176,12 +197,12 @@ public class QueryOrchestrationService
         };
     }
 
-    private async Task<bool> VerifyFinalAnswerAsync(string prompt, IReadOnlyList<QueryStep> steps, string summary, CancellationToken cancellationToken)
+    private async Task<(bool Approved, string? Message)> VerifyFinalAnswerAsync(string prompt, IReadOnlyList<QueryStep> steps, string summary, CancellationToken cancellationToken)
     {
         var model = _options.Models.Verification;
         if (string.IsNullOrWhiteSpace(model))
         {
-            return true;
+            return (true, null);
         }
 
         var request = new LlmRequest
@@ -201,7 +222,7 @@ public class QueryOrchestrationService
         var output = JsonSerializer.Deserialize<FinalAnswerVerificationOutput>(response.Content, SerializerOptions)
             ?? throw new InvalidOperationException("The verification model returned invalid JSON.");
 
-        return output.Outcome == "approved";
+        return (output.Outcome == "approved", output.Message);
     }
 
     private static HashSet<string> KnownDealIds(IReadOnlyList<QueryStep> steps)
@@ -280,7 +301,7 @@ public class QueryOrchestrationService
             "{\"outcome\":\"final\",\"summary\":\"short Hebrew answer\",\"referencedDealIds\":[...]} once you can answer completely -- every number and every deal ID in the summary must come from a query result you actually received below, never invented or guessed, and referencedDealIds must list every deal ID the summary names; " +
             "{\"outcome\":\"clarification\",\"message\":\"short Hebrew clarifying question\"} if the question itself is genuinely ambiguous (such as a neighborhood name matching more than one place); " +
             "{\"outcome\":\"unsupported\",\"message\":\"short Hebrew explanation\"} if the question cannot be answered this way at all -- a future price prediction, a specific property's valuation, investment advice, or a request unrelated to this dataset. " +
-            $"You have {remainingBudget} quer{(remainingBudget == 1 ? "y" : "ies")} left before you must give a final/clarification/unsupported answer instead. A question that first needs to identify which specific categories qualify (e.g. \"the five most expensive cities\") before computing something within them usually takes two or more queries: run one grouped query to find the categories, then another query -- often another grouped query with no filter restricting it to just those categories, since you can already pick the ones you need out of its full result yourself -- to get the value you actually need; never invent a filter capable of restricting to several specific category values at once, since none exists. " +
+            $"You have {remainingBudget} quer{(remainingBudget == 1 ? "y" : "ies")} left before you must give a final/clarification/unsupported answer instead. A question that first needs to identify which specific categories qualify (e.g. \"the five most expensive cities\") before computing the single highest/lowest value within them (\"the cheapest apartment among them\" -- rank 1) is fully supported and always takes exactly two queries: one grouped query to find the categories, then one more grouped query with Min/Max rank 1 and no filter restricting it to just those categories (since you can already pick the ones you need out of its full per-category result yourself) -- use this two-query approach confidently for a rank-1 \"cheapest/most expensive among them\" question, it always works. There is no filter that restricts to several specific category values at once, so never invent one. Only a different, much narrower case is actually impossible: an Nth-ranked value with N greater than 1 combined across several specific named categories as one single merged ranking (e.g. literally \"the fifth cheapest apartment among those five cities\" meaning one ranking over their combined deals, not five separate per-city 5th-cheapest answers) -- this one specific case cannot be computed, because nothing lets you restrict to exactly that combined set. Do not confuse the two: only reject the narrow N>1 combined-ranking case above; a plain rank-1 \"cheapest/most expensive among these categories\" question must never be rejected or treated as this hard case. " +
             $"Current date in Israel: {currentIsraelDate:yyyy-MM-dd}; resolve a relative date such as \"last year\" against it. " +
             $"Original question: {prompt} " +
             $"Steps so far (each is the exact query you ran and the real result it returned): {historyText}";
