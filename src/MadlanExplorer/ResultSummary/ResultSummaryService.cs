@@ -72,6 +72,7 @@ public class ResultSummaryService
         return
             "You write a short Hebrew summary answering a real-estate question using only the calculated evidence given below. " +
             "Never invent a number, a deal ID, or a claim that is not present in the evidence. If there are no contributing transactions, say so plainly instead of guessing. " +
+            "Never make claims about the dataset's structure, fields, or this system's capabilities -- for example, never say a field like city \"is not segmented\" or \"does not exist\" in the data. You are not told the dataset's schema and have no basis for such a claim; the filters you are given are exactly what was applied to compute this evidence, nothing more, nothing less. Simply state the computed numbers and what they describe; do not explain, excuse, or editorialize about why the result covers what it covers. " +
             "State the sample size and mention any warnings or exclusions in plain Hebrew language for a non-technical reader -- never copy a warning or exclusion code into the summary verbatim. " +
             "Translate each warning code using exactly this glossary, word for word, and do not output the English code itself: " +
             "low_price_reported -> \"נמצאה עסקה עם מחיר מתחת ל-100,000 ₪; ייתכן שזהו טעות דיווח\"; " +

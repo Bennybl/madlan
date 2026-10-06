@@ -46,6 +46,20 @@ public class ResultSummaryServiceTests
     }
 
     [Fact]
+    public async Task Summarize_tells_the_model_never_to_make_claims_about_the_datasets_structure()
+    {
+        var provider = new FakeLlmProvider();
+        provider.SetContent(LlmStage.ResultSummary, """{"summary":"אין נתונים.","referencedDealIds":[]}""");
+        var service = CreateService(provider);
+        var result = new DealQueryResult { TransactionCount = 0 };
+
+        await service.SummarizeAsync("שאלה", new DealFilters(), "hash-abc123", result, CancellationToken.None);
+
+        var sentPrompt = provider.Request!.Prompt;
+        Assert.Contains("Never make claims about the dataset's structure", sentPrompt);
+    }
+
+    [Fact]
     public async Task Summarize_allows_empty_references_for_an_empty_result()
     {
         var provider = new FakeLlmProvider();
