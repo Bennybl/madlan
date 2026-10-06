@@ -133,6 +133,47 @@ public class ResultSummaryServiceTests
     }
 
     [Fact]
+    public async Task Summarize_allows_empty_references_for_a_group_by_breakdown_with_only_aggregate_metrics()
+    {
+        var provider = new FakeLlmProvider();
+        provider.SetContent(LlmStage.ResultSummary, """{"summary":"בחולון הממוצע 1,000,000 ובתל אביב 2,000,000.","referencedDealIds":[]}""");
+        var service = CreateService(provider);
+        var result = new DealQueryResult
+        {
+            TransactionCount = 10,
+            GroupBy = GroupByField.City,
+            Groups =
+            [
+                new GroupedQueryResult { GroupValue = "חולון", TransactionCount = 7, RequestedMetrics = [new RequestedMetricResult { Metric = QueryMetric.AveragePrice, Value = 1_000_000m }] },
+                new GroupedQueryResult { GroupValue = "תל אביב", TransactionCount = 3, RequestedMetrics = [new RequestedMetricResult { Metric = QueryMetric.AveragePrice, Value = 2_000_000m }] }
+            ]
+        };
+
+        var output = await service.SummarizeAsync("שאלה", new DealFilters(), "hash-1", result, CancellationToken.None);
+
+        Assert.NotNull(output.Summary);
+    }
+
+    [Fact]
+    public async Task Summarize_still_requires_a_reference_for_a_group_by_breakdown_with_a_ranked_metric()
+    {
+        var provider = new FakeLlmProvider();
+        provider.SetContent(LlmStage.ResultSummary, """{"summary":"בחולון הכי יקרה היא עסקה כלשהי.","referencedDealIds":[]}""");
+        var service = CreateService(provider);
+        var result = new DealQueryResult
+        {
+            TransactionCount = 7,
+            GroupBy = GroupByField.City,
+            Groups =
+            [
+                new GroupedQueryResult { GroupValue = "חולון", TransactionCount = 7, RankedMetrics = [new RankedMetricResult { Metric = QueryMetric.MaxPrice, Rank = 1, Value = 1_000_000m, DealId = "D1" }] }
+            ]
+        };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.SummarizeAsync("שאלה", new DealFilters(), "hash-1", result, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Summarize_rejects_a_summary_with_no_references_when_evidence_exists()
     {
         var provider = new FakeLlmProvider();

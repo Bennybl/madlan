@@ -85,4 +85,21 @@ public static class CalculatedEvidence
 
         return dealIds;
     }
+
+    /// <summary>
+    /// True when the result has at least one metric that points at one specific deal (a Min/Max
+    /// requested metric or a ranked metric, overall or within a group). A summary answering only
+    /// aggregate statistics (count, average, median -- overall or per group) has no specific deal
+    /// to name, so it has nothing meaningful to cite even though the underlying evidence is real.
+    /// </summary>
+    public static bool HasDealAnchoredMetric(DealQueryResult result)
+    {
+        if (result.RequestedMetrics.Any(m => m.DealId is not null) || result.RankedMetrics.Any(m => m.DealId is not null))
+        {
+            return true;
+        }
+
+        return result.Groups.Any(group =>
+            group.RequestedMetrics.Any(m => m.DealId is not null) || group.RankedMetrics.Any(m => m.DealId is not null));
+    }
 }

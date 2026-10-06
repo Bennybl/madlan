@@ -52,7 +52,8 @@ public class ResultSummaryService
             throw new InvalidOperationException("The summary model referenced a deal ID that is not part of the calculated evidence.");
         }
 
-        if (result.TransactionCount > 0 && output.ReferencedDealIds.Count == 0)
+        var referenceRequired = result.GroupBy is null || CalculatedEvidence.HasDealAnchoredMetric(result);
+        if (result.TransactionCount > 0 && output.ReferencedDealIds.Count == 0 && referenceRequired)
         {
             throw new InvalidOperationException("The summary model did not reference any supporting evidence.");
         }
@@ -81,7 +82,7 @@ public class ResultSummaryService
             "supplied_price_per_sqm_mismatch -> \"נמצאה עסקה שבה המחיר למ\\\"ר שדווח אינו תואם למחיר ולשטח שדווחו\". " +
             "requestedMetrics lists each specific statistic the question asked for beyond the always-present transaction count, median price and median price per square meter; mention every entry in it. Each entry's dealId (present only for Min/Max metrics) is the specific matching deal to name for that statistic. " +
             "rankedMetrics lists each Nth-highest/lowest statistic the question asked for (e.g. rank 2 of MaxPrice is \"the second most expensive price\"); mention every entry in it the same way, naming its rank in plain Hebrew (\"השני\", \"השלישי\" etc.) and its specific matching dealId. " +
-            "When groupBy is set, the question asked for a per-category breakdown; the groups array has one entry per distinct value of that field (its groupValue), each with its own transactionCount, requestedMetrics and rankedMetrics computed only within that group. Cover every group in the summary -- for a short list of groups, name each one explicitly with its own numbers; for a long list, you may summarize the overall pattern but must still name the specific highest/lowest groups by their groupValue and dealId where relevant. Never claim a breakdown wasn't computed when groups is non-empty. " +
+            "When groupBy is set, the question asked for a per-category breakdown; the groups array has one entry per distinct value of that field (its groupValue), each with its own transactionCount, requestedMetrics and rankedMetrics computed only within that group. Cover every group in the summary -- for a short list of groups, name each one explicitly with its own numbers; for a long list, you may summarize the overall pattern but must still name the specific highest/lowest groups by their groupValue and dealId where relevant. Never claim a breakdown wasn't computed when groups is non-empty. Two groupValue entries that look similar (e.g. slightly different spellings or punctuation of what looks like the same city) are each a distinct, real, literal value actually present in the raw data -- this dataset has known unmerged spelling variants for some localities; never call this a duplicate or an error, just report each group's value and numbers as given. When every group's metrics are averages/medians only (no dealId on any of them), there is no single transaction to name for that breakdown, so referencedDealIds may be empty even though the summary is fully grounded in the computed per-group numbers -- never invent or guess a dealId just to have one to cite. " +
             "Return JSON with summary (Hebrew text) and referencedDealIds (deal IDs from the evidence that support the summary; empty only when there is no evidence). " +
             $"Original user prompt: {prompt} " +
             $"Calculated evidence: {evidenceJson}";

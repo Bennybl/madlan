@@ -30,6 +30,20 @@ public class ResultVerificationServiceTests
     }
 
     [Fact]
+    public async Task Verify_tells_the_model_not_to_reject_similar_looking_group_names_as_duplicates()
+    {
+        var provider = new FakeLlmProvider();
+        provider.SetContent(LlmStage.ResultVerification, """{"outcome":"approved"}""");
+        var service = CreateService(provider);
+        var result = new DealQueryResult { TransactionCount = 1, ContributorDealIds = ["D1"] };
+        var candidate = new ResultSummaryOutput { Summary = "סיכום", ReferencedDealIds = [] };
+
+        await service.VerifyAsync("שאלה", new DealFilters(), "hash-1", result, candidate, CancellationToken.None);
+
+        Assert.Contains("unmerged spelling variants", provider.Request?.Prompt);
+    }
+
+    [Fact]
     public async Task Verify_rejects_a_summary_that_answers_a_different_question()
     {
         var provider = new FakeLlmProvider();
