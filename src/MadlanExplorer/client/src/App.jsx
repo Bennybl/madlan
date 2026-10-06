@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchJson } from "./api.js";
 import CoverageCard from "./components/CoverageCard.jsx";
 import ChatPanel from "./components/ChatPanel.jsx";
+import ResultsPanel from "./components/ResultsPanel.jsx";
 import ManualFiltersPanel from "./components/ManualFiltersPanel.jsx";
 import DealLookupPanel from "./components/DealLookupPanel.jsx";
 import DefinitionsPanel from "./components/DefinitionsPanel.jsx";
@@ -10,6 +11,7 @@ export default function App() {
   const [dataset, setDataset] = useState(null);
   const [datasetError, setDatasetError] = useState(null);
   const [suggestedFilters, setSuggestedFilters] = useState(null);
+  const [chatResult, setChatResult] = useState(null);
 
   useEffect(() => {
     fetchJson("/api/dataset")
@@ -26,7 +28,8 @@ export default function App() {
 
       <main>
         <CoverageCard dataset={dataset} error={datasetError} />
-        <ChatPanel onFiltersSuggested={setSuggestedFilters} />
+        <ChatPanel onFiltersSuggested={setSuggestedFilters} onResult={setChatResult} />
+        <ResultsPanel data={chatResult} />
         <ManualFiltersPanel suggestedFilters={suggestedFilters} dataset={dataset} />
         <DealLookupPanel />
         <DefinitionsPanel />

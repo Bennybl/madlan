@@ -1,5 +1,4 @@
 import { describeFilters } from "../format.js";
-import ResultMetrics from "./ResultMetrics.jsx";
 
 export default function MessageBubble({ message }) {
   if (message.role === "user") {
@@ -39,10 +38,10 @@ export default function MessageBubble({ message }) {
         {response.summary ? (
           <p className="verified-summary">{response.summary}</p>
         ) : (
-          <p className="hint">{response.message || "סיכום מאומת אינו זמין כעת. מוצגות התוצאות המחושבות בלבד."}</p>
+          <p className="hint">{response.message || "סיכום מאומת אינו זמין כעת. ראו את טבלת התוצאות המלאה מתחת לצ'אט."}</p>
         )}
 
-        <ResultMetrics result={response.result} />
+        <p className="hint">טבלת התוצאות המלאה מוצגת מתחת לצ'אט.</p>
       </div>
     </div>
   );
