@@ -88,10 +88,28 @@ public class QueryGenerationServiceTests
         Assert.Equal("עיר שלא קיימת בשום קטלוג", response.Filters?.City);
     }
 
-    private static QueryGenerationService CreateService(FakeLlmProvider provider)
+    [Fact]
+    public async Task Generate_includes_the_datasets_exact_property_types_in_the_prompt()
+    {
+        var provider = new FakeLlmProvider();
+        var repository = new FakeDealRepository
+        {
+            Facts = new DatasetFacts { PropertyTypes = ["דירה", "פנטהאוז", "דופלקס"] }
+        };
+        var service = CreateService(provider, repository);
+
+        await service.GenerateAsync("test", CancellationToken.None);
+
+        Assert.Contains("דירה", provider.Request?.Prompt);
+        Assert.Contains("פנטהאוז", provider.Request?.Prompt);
+        Assert.Contains("דופלקס", provider.Request?.Prompt);
+    }
+
+    private static QueryGenerationService CreateService(FakeLlmProvider provider, FakeDealRepository? repository = null)
     {
         var options = Options.Create(new LlmOptions { Models = new LlmModelsOptions { QueryGeneration = "grok-test-model" } });
-        var queryService = new QueryService(new FakeDealRepository());
-        return new QueryGenerationService(provider, options, queryService, TestLocalityCatalog.CreateLoaded());
+        repository ??= new FakeDealRepository();
+        var queryService = new QueryService(repository);
+        return new QueryGenerationService(provider, options, queryService, TestLocalityCatalog.CreateLoaded(), repository);
     }
 }

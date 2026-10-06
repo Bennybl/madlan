@@ -91,15 +91,29 @@ public class QueryVerificationServiceTests
     {
         var provider = new FakeLlmProvider();
         var options = Options.Create(new LlmOptions());
-        var service = new QueryVerificationService(provider, options);
+        var service = new QueryVerificationService(provider, options, new FakeDealRepository());
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.VerifyAsync("test", new DealFilters(), [], CancellationToken.None));
         Assert.Empty(provider.Requests);
     }
 
-    private static QueryVerificationService CreateService(FakeLlmProvider provider)
+    [Fact]
+    public async Task Verify_includes_the_datasets_exact_property_types_in_the_prompt()
+    {
+        var provider = new FakeLlmProvider();
+        provider.SetContent(LlmStage.QueryVerification, """{"outcome":"approved"}""");
+        var repository = new FakeDealRepository { Facts = new DatasetFacts { PropertyTypes = ["דירה", "פנטהאוז"] } };
+        var service = CreateService(provider, repository);
+
+        await service.VerifyAsync("test", new DealFilters(), [], CancellationToken.None);
+
+        Assert.Contains("דירה", provider.Request?.Prompt);
+        Assert.Contains("פנטהאוז", provider.Request?.Prompt);
+    }
+
+    private static QueryVerificationService CreateService(FakeLlmProvider provider, FakeDealRepository? repository = null)
     {
         var options = Options.Create(new LlmOptions { Models = new LlmModelsOptions { QueryVerification = "grok-verification-model" } });
-        return new QueryVerificationService(provider, options);
+        return new QueryVerificationService(provider, options, repository ?? new FakeDealRepository());
     }
 }

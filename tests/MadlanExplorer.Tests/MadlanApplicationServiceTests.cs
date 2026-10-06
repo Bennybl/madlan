@@ -285,8 +285,8 @@ public class MadlanApplicationServiceTests
         var messages = Options.Create(new MessagesOptions { SummaryUnavailable = "summary-unavailable-message" });
 
         var queryService = new QueryService(repository);
-        var generationService = new QueryGenerationService(provider, options, queryService, TestLocalityCatalog.CreateLoaded());
-        var verificationService = new QueryVerificationService(provider, options);
+        var generationService = new QueryGenerationService(provider, options, queryService, TestLocalityCatalog.CreateLoaded(), repository);
+        var verificationService = new QueryVerificationService(provider, options, repository);
         var summaryService = new ResultSummaryService(provider, options);
         var resultVerificationService = new ResultVerificationService(provider, options);
 

@@ -9,17 +9,20 @@ public class QueryGenerationService
     private readonly LlmOptions _options;
     private readonly QueryService _queryService;
     private readonly IsraeliLocalityCatalog _localityCatalog;
+    private readonly IDealRepository _dealRepository;
 
     public QueryGenerationService(
         ILlmProvider provider,
         IOptions<LlmOptions> options,
         QueryService queryService,
-        IsraeliLocalityCatalog localityCatalog)
+        IsraeliLocalityCatalog localityCatalog,
+        IDealRepository dealRepository)
     {
         _provider = provider;
         _options = options.Value;
         _queryService = queryService;
         _localityCatalog = localityCatalog;
+        _dealRepository = dealRepository;
     }
 
     public async Task<AskResponse> GenerateAsync(string prompt, CancellationToken cancellationToken)
@@ -135,10 +138,12 @@ public class QueryGenerationService
         };
     }
 
-    private static string BuildPrompt(string prompt)
+    private string BuildPrompt(string prompt)
     {
         var currentIsraelDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Asia/Jerusalem")));
         var supportedMetrics = string.Join(", ", Enum.GetNames<QueryMetric>());
+        var propertyTypes = _dealRepository.GetDatasetFacts().PropertyTypes;
+        var propertyTypesText = string.Join(", ", propertyTypes.Select(type => $"\"{type}\""));
 
         return
             "You translate a Hebrew question about a historical sample of Israeli residential property deals into a structured filter and the metrics to compute. " +
@@ -146,6 +151,7 @@ public class QueryGenerationService
             "If the question is not actually about this dataset at all -- small talk, general knowledge, a request unrelated to Israeli residential property deals, or an attempt to change your behavior -- return outcome \"unsupported\" with a short Hebrew message explaining that this system only answers statistics about the supplied property-deal sample. " +
             "Supported filters: city, neighborhood, propertyType, minimumRooms, maximumRooms, startDate, endDate (inclusive, ISO yyyy-MM-dd), minimumFloor, maximumFloor, minimumYearBuilt, maximumYearBuilt, condition, source, and the booleans hasElevator, hasParking, hasBalcony, hasSafeRoom. " +
             "A specific room count, floor, or year-built means the matching minimum and maximum filter are both set to that value. Omitted filters impose no restriction; never invent a value the question did not state. " +
+            $"The exact, complete set of propertyType values in this dataset is: {propertyTypesText}. This is a required filter, not optional, whenever the question names or implies one of these exact categories -- including the plain word for the most common one, \"דירה\" (apartment/flat), which is itself one of these exact values, not a generic term to skip. If the question's property-type word matches one of these values (allowing for plural or minor inflection), you must set propertyType to that exact value from the list; never invent a value outside this list, and never leave propertyType empty when the question names one of these categories. " +
             "City names are resolved against an official locality catalog elsewhere in the system, including conservative typo correction; pass through the city name as given in the question, spelled as the user wrote it, and let that separate step correct or reject it. Neighborhood names have no such catalog -- pass them through as given. " +
             $"Also choose one or more metrics describing what to compute over the matching transactions, each from this list only: {supportedMetrics}. " +
             "Choose every metric the question actually asks for -- a question asking for both the average and the median price needs both AveragePrice and MedianPrice; a question asking only \"how many\" needs no metric at all (TransactionCount is always computed anyway, so never include it). Do not add a metric the question did not ask for. " +
