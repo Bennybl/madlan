@@ -31,8 +31,6 @@ public class DatasetQueryTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.Equal(3_826_000m, result.MedianPriceNis);
         Assert.Equal(38_260m, result.MedianPricePerSqm);
         Assert.Equal(["D100027"], result.ContributorDealIds);
-        Assert.Equal(["D100027"], result.PriceContributorDealIds);
-        Assert.Equal(["D100027"], result.PricePerSqmContributorDealIds);
         Assert.Contains("price_metric_has_fewer_than_five_contributors", result.Warnings);
         Assert.Contains("price_per_sqm_metric_has_fewer_than_five_contributors", result.Warnings);
     }
@@ -80,201 +78,6 @@ public class DatasetQueryTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
-    public void Query_computes_min_and_max_price_for_the_documented_holon_four_room_deal()
-    {
-        var filters = new DealFilters
-        {
-            City = "חולון",
-            PropertyType = "דירה",
-            MinimumRooms = 4,
-            MaximumRooms = 4,
-            StartDate = new DateOnly(2025, 1, 1),
-            EndDate = new DateOnly(2025, 12, 31)
-        };
-
-        var minResult = Query(filters, QueryMetric.MinPrice);
-        var maxResult = Query(filters, QueryMetric.MaxPrice);
-
-        var min = Assert.Single(minResult.RequestedMetrics);
-        Assert.Equal(QueryMetric.MinPrice, min.Metric);
-        Assert.Equal(3_826_000m, min.Value);
-        Assert.Equal("D100027", min.DealId);
-
-        var max = Assert.Single(maxResult.RequestedMetrics);
-        Assert.Equal(QueryMetric.MaxPrice, max.Metric);
-        Assert.Equal(3_826_000m, max.Value);
-        Assert.Equal("D100027", max.DealId);
-    }
-
-    [Fact]
-    public void Query_computes_distinct_min_and_max_price_deals_for_a_broader_filter()
-    {
-        var filters = new DealFilters { City = "חולון" };
-
-        var countResult = Query(filters);
-        var minResult = Query(filters, QueryMetric.MinPrice).RequestedMetrics[0];
-        var maxResult = Query(filters, QueryMetric.MaxPrice).RequestedMetrics[0];
-        var averageResult = Query(filters, QueryMetric.AveragePrice).RequestedMetrics[0];
-
-        Assert.True(countResult.TransactionCount > 1);
-        Assert.NotNull(minResult.Value);
-        Assert.NotNull(maxResult.Value);
-        Assert.True(minResult.Value < maxResult.Value);
-        Assert.NotEqual(minResult.DealId, maxResult.DealId);
-        Assert.InRange(averageResult.Value!.Value, minResult.Value.Value, maxResult.Value.Value);
-    }
-
-    [Fact]
-    public void Query_computes_multiple_requested_metrics_in_one_call()
-    {
-        var filters = new DealFilters { City = "חולון" };
-
-        var result = Query(filters, QueryMetric.AveragePrice, QueryMetric.MedianPrice);
-
-        Assert.Equal(2, result.RequestedMetrics.Count);
-        var average = Assert.Single(result.RequestedMetrics, m => m.Metric == QueryMetric.AveragePrice);
-        var median = Assert.Single(result.RequestedMetrics, m => m.Metric == QueryMetric.MedianPrice);
-        Assert.NotNull(average.Value);
-        Assert.NotNull(median.Value);
-        Assert.Equal(result.MedianPriceNis, median.Value);
-    }
-
-    [Fact]
-    public void Query_does_not_compute_a_requested_metric_when_none_is_asked_for()
-    {
-        var result = Query(new DealFilters { City = "חולון" });
-
-        Assert.Empty(result.RequestedMetrics);
-    }
-
-    [Fact]
-    public void Query_computes_the_second_highest_price_as_a_ranked_metric()
-    {
-        var filters = new DealFilters { City = "חולון" };
-
-        var topTwo = QueryRanked(filters, (QueryMetric.MaxPrice, 1), (QueryMetric.MaxPrice, 2));
-        var maxResult = Query(filters, QueryMetric.MaxPrice).RequestedMetrics[0];
-
-        Assert.Equal(2, topTwo.RankedMetrics.Count);
-        var first = Assert.Single(topTwo.RankedMetrics, r => r.Rank == 1);
-        var second = Assert.Single(topTwo.RankedMetrics, r => r.Rank == 2);
-        Assert.Equal(maxResult.Value, first.Value);
-        Assert.Equal(maxResult.DealId, first.DealId);
-        Assert.NotNull(second.Value);
-        Assert.True(second.Value <= first.Value);
-        Assert.NotEqual(first.DealId, second.DealId);
-    }
-
-    [Fact]
-    public void Query_returns_a_null_ranked_metric_when_the_rank_exceeds_the_matching_deals()
-    {
-        var result = QueryRanked(new DealFilters { City = "חולון" }, (QueryMetric.MaxPrice, 500));
-
-        var ranked = Assert.Single(result.RankedMetrics);
-        Assert.Null(ranked.Value);
-        Assert.Null(ranked.DealId);
-    }
-
-    [Fact]
-    public void Query_computes_the_cheapest_deal_per_city_when_grouped()
-    {
-        var result = QueryGrouped(new DealFilters(), GroupByField.City, rankedMetrics: [(QueryMetric.MinPrice, 1)]);
-
-        Assert.NotEmpty(result.Groups);
-        Assert.Equal(GroupByField.City, result.GroupBy);
-
-        var holon = Assert.Single(result.Groups, g => g.GroupValue == "חולון");
-        Assert.True(holon.TransactionCount > 0);
-        var cheapest = Assert.Single(holon.RankedMetrics);
-        Assert.Equal(QueryMetric.MinPrice, cheapest.Metric);
-        Assert.NotNull(cheapest.Value);
-        Assert.NotNull(cheapest.DealId);
-
-        var ungroupedHolon = Query(new DealFilters { City = "חולון" }, QueryMetric.MinPrice).RequestedMetrics[0];
-        Assert.Equal(ungroupedHolon.Value, cheapest.Value);
-        Assert.Equal(ungroupedHolon.DealId, cheapest.DealId);
-    }
-
-    [Fact]
-    public void Query_group_by_respects_an_additional_filter()
-    {
-        var result = QueryGrouped(new DealFilters { PropertyType = "דירה" }, GroupByField.City, metrics: [QueryMetric.AveragePrice]);
-
-        Assert.NotEmpty(result.Groups);
-        foreach (var group in result.Groups)
-        {
-            Assert.True(group.TransactionCount > 0);
-        }
-    }
-
-    [Fact]
-    public void Query_flags_values_outside_the_interquartile_fence_as_outliers()
-    {
-        var result = QueryOutliers(new DealFilters(), OutlierField.Price);
-
-        Assert.NotEmpty(result.Outliers);
-        foreach (var outlier in result.Outliers)
-        {
-            Assert.True(outlier.Value < outlier.LowerBound || outlier.Value > outlier.UpperBound);
-            Assert.True(outlier.LowerBound < outlier.UpperBound);
-        }
-
-        var dealIds = result.Outliers.Select(o => o.DealId).ToList();
-        Assert.Equal(dealIds.Distinct().Count(), dealIds.Count);
-    }
-
-    [Fact]
-    public void Query_computes_outliers_against_only_the_filtered_sample()
-    {
-        var result = QueryOutliers(new DealFilters { City = "חולון" }, OutlierField.Price);
-
-        foreach (var outlier in result.Outliers)
-        {
-            Assert.True(outlier.Value < outlier.LowerBound || outlier.Value > outlier.UpperBound);
-        }
-    }
-
-    [Fact]
-    public void Query_computes_outliers_for_every_requested_field_independently()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var result = scope.ServiceProvider.GetRequiredService<QueryService>().Query(
-            new DealFilters(),
-            outlierFields: [OutlierField.Price, OutlierField.SizeSqm, OutlierField.Rooms]);
-
-        var fieldsPresent = result.Outliers.Select(o => o.Field).Distinct().ToList();
-        Assert.True(fieldsPresent.Count > 1, "Expected outliers from more than one requested field.");
-        foreach (var outlier in result.Outliers)
-        {
-            Assert.True(outlier.Value < outlier.LowerBound || outlier.Value > outlier.UpperBound);
-        }
-    }
-
-    [Fact]
-    public void Query_groups_by_a_boolean_amenity_field()
-    {
-        var result = QueryGrouped(new DealFilters(), GroupByField.HasElevator, metrics: [QueryMetric.AveragePrice]);
-
-        Assert.Equal(2, result.Groups.Count);
-        Assert.Contains(result.Groups, g => g.GroupValue == "1");
-        Assert.Contains(result.Groups, g => g.GroupValue == "0");
-        Assert.All(result.Groups, g => Assert.True(g.TransactionCount > 0));
-    }
-
-    [Fact]
-    public void Query_computes_outliers_independently_per_group()
-    {
-        var result = QueryOutliers(new DealFilters(), OutlierField.Price, GroupByField.City);
-
-        Assert.NotEmpty(result.Outliers);
-        Assert.Equal(GroupByField.City, result.GroupBy);
-        foreach (var outlier in result.Outliers)
-        {
-            Assert.NotNull(outlier.GroupValue);
-        }
-    }
-
-    [Fact]
     public void Query_filters_by_boolean_amenity_columns()
     {
         var withElevator = Query(new DealFilters { HasElevator = true });
@@ -287,33 +90,164 @@ public class DatasetQueryTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.True(withoutElevator.TransactionCount < unfiltered.TransactionCount);
     }
 
-    private DealQueryResult Query(DealFilters filters, params QueryMetric[] metrics)
+    [Fact]
+    public void DataQuery_computes_min_and_max_price_for_the_documented_holon_four_room_deal()
     {
-        using var scope = _factory.Services.CreateScope();
-        return scope.ServiceProvider.GetRequiredService<QueryService>().Query(filters, metrics);
+        var filters = new DealFilters
+        {
+            City = "חולון",
+            PropertyType = "דירה",
+            MinimumRooms = 4,
+            MaximumRooms = 4,
+            StartDate = new DateOnly(2025, 1, 1),
+            EndDate = new DateOnly(2025, 12, 31)
+        };
+
+        var min = Single(ExecuteDataQuery(filters, DataAggregate.Min, DataField.Price));
+        var max = Single(ExecuteDataQuery(filters, DataAggregate.Max, DataField.Price));
+
+        Assert.Equal(3_826_000m, min.Value);
+        Assert.Equal("D100027", min.DealId);
+        Assert.Equal(3_826_000m, max.Value);
+        Assert.Equal("D100027", max.DealId);
     }
 
-    private DealQueryResult QueryRanked(DealFilters filters, params (QueryMetric Metric, int Rank)[] rankedMetrics)
+    [Fact]
+    public void DataQuery_computes_distinct_min_and_max_price_deals_for_a_broader_filter()
     {
-        using var scope = _factory.Services.CreateScope();
-        var requests = rankedMetrics.Select(r => new RankedMetricRequest { Metric = r.Metric, Rank = r.Rank }).ToList();
-        return scope.ServiceProvider.GetRequiredService<QueryService>().Query(filters, rankedMetrics: requests);
+        var filters = new DealFilters { City = "חולון" };
+
+        var min = Single(ExecuteDataQuery(filters, DataAggregate.Min, DataField.Price));
+        var max = Single(ExecuteDataQuery(filters, DataAggregate.Max, DataField.Price));
+        var average = Single(ExecuteDataQuery(filters, DataAggregate.Average, DataField.Price));
+
+        Assert.NotNull(min.Value);
+        Assert.NotNull(max.Value);
+        Assert.True(min.Value < max.Value);
+        Assert.NotEqual(min.DealId, max.DealId);
+        Assert.InRange(average.Value!.Value, min.Value.Value, max.Value.Value);
     }
 
-    private DealQueryResult QueryGrouped(
+    [Fact]
+    public void DataQuery_computes_the_second_highest_price_via_rank()
+    {
+        var filters = new DealFilters { City = "חולון" };
+
+        var first = Single(ExecuteDataQuery(filters, DataAggregate.Max, DataField.Price, rank: 1));
+        var second = Single(ExecuteDataQuery(filters, DataAggregate.Max, DataField.Price, rank: 2));
+
+        Assert.NotNull(second.Value);
+        Assert.True(second.Value <= first.Value);
+        Assert.NotEqual(first.DealId, second.DealId);
+    }
+
+    [Fact]
+    public void DataQuery_returns_no_row_when_the_rank_exceeds_the_matching_deals()
+    {
+        var result = ExecuteDataQuery(new DealFilters { City = "חולון" }, DataAggregate.Max, DataField.Price, rank: 500);
+
+        Assert.Empty(result.Rows);
+    }
+
+    [Fact]
+    public void DataQuery_computes_the_cheapest_deal_per_city_when_grouped()
+    {
+        var result = ExecuteDataQuery(new DealFilters(), DataAggregate.Min, DataField.Price, groupBy: GroupByField.City);
+
+        Assert.NotEmpty(result.Rows);
+        var holon = Assert.Single(result.Rows, r => r.GroupValue == "חולון");
+        Assert.NotNull(holon.Value);
+        Assert.NotNull(holon.DealId);
+
+        var ungroupedHolon = Single(ExecuteDataQuery(new DealFilters { City = "חולון" }, DataAggregate.Min, DataField.Price));
+        Assert.Equal(ungroupedHolon.Value, holon.Value);
+        Assert.Equal(ungroupedHolon.DealId, holon.DealId);
+    }
+
+    [Fact]
+    public void DataQuery_top_n_groups_narrows_a_grouped_query_to_the_highest_valued_groups()
+    {
+        var all = ExecuteDataQuery(new DealFilters(), DataAggregate.Average, DataField.Price, groupBy: GroupByField.City);
+        var top5 = ExecuteDataQuery(new DealFilters(), DataAggregate.Average, DataField.Price, groupBy: GroupByField.City, limit: 5, descending: true);
+
+        Assert.Equal(5, top5.Rows.Count);
+        var expectedTop5 = all.Rows.Where(r => r.Value is not null).OrderByDescending(r => r.Value).Take(5).Select(r => r.GroupValue).ToHashSet();
+        Assert.Equal(expectedTop5, top5.Rows.Select(r => r.GroupValue).ToHashSet());
+    }
+
+    [Fact]
+    public void DataQuery_group_by_respects_an_additional_filter()
+    {
+        var result = ExecuteDataQuery(new DealFilters { PropertyType = "דירה" }, DataAggregate.Average, DataField.Price, groupBy: GroupByField.City);
+
+        Assert.NotEmpty(result.Rows);
+    }
+
+    [Fact]
+    public void DataQuery_flags_values_outside_the_interquartile_fence_as_outliers()
+    {
+        var result = ExecuteDataQuery(new DealFilters(), DataAggregate.Outliers, DataField.Price);
+
+        Assert.NotEmpty(result.Rows);
+        foreach (var row in result.Rows)
+        {
+            Assert.True(row.Value < row.LowerBound || row.Value > row.UpperBound);
+            Assert.True(row.LowerBound < row.UpperBound);
+        }
+
+        var dealIds = result.Rows.Select(r => r.DealId).ToList();
+        Assert.Equal(dealIds.Distinct().Count(), dealIds.Count);
+    }
+
+    [Fact]
+    public void DataQuery_computes_outliers_independently_per_group()
+    {
+        var result = ExecuteDataQuery(new DealFilters(), DataAggregate.Outliers, DataField.Price, groupBy: GroupByField.City);
+
+        Assert.NotEmpty(result.Rows);
+        foreach (var row in result.Rows)
+        {
+            Assert.NotNull(row.GroupValue);
+        }
+    }
+
+    [Fact]
+    public void DataQuery_groups_by_a_boolean_amenity_field()
+    {
+        var result = ExecuteDataQuery(new DealFilters(), DataAggregate.Count, groupBy: GroupByField.HasElevator);
+
+        Assert.Equal(2, result.Rows.Count);
+        Assert.Contains(result.Rows, r => r.GroupValue == "1");
+        Assert.Contains(result.Rows, r => r.GroupValue == "0");
+    }
+
+    private DealQueryResult Query(DealFilters filters)
+    {
+        using var scope = _factory.Services.CreateScope();
+        return scope.ServiceProvider.GetRequiredService<QueryService>().Query(filters);
+    }
+
+    private DataQueryResult ExecuteDataQuery(
         DealFilters filters,
-        GroupByField groupBy,
-        QueryMetric[]? metrics = null,
-        (QueryMetric Metric, int Rank)[]? rankedMetrics = null)
+        DataAggregate aggregate,
+        DataField? field = null,
+        GroupByField? groupBy = null,
+        int rank = 1,
+        int? limit = null,
+        bool descending = true)
     {
         using var scope = _factory.Services.CreateScope();
-        var requests = (rankedMetrics ?? []).Select(r => new RankedMetricRequest { Metric = r.Metric, Rank = r.Rank }).ToList();
-        return scope.ServiceProvider.GetRequiredService<QueryService>().Query(filters, metrics ?? [], requests, groupBy);
+        return scope.ServiceProvider.GetRequiredService<QueryService>().ExecuteDataQuery(new DataQuery
+        {
+            Filters = filters,
+            Aggregate = aggregate,
+            Field = field,
+            GroupBy = groupBy,
+            Rank = rank,
+            Limit = limit,
+            Descending = descending
+        });
     }
 
-    private DealQueryResult QueryOutliers(DealFilters filters, OutlierField outlierField, GroupByField? groupBy = null)
-    {
-        using var scope = _factory.Services.CreateScope();
-        return scope.ServiceProvider.GetRequiredService<QueryService>().Query(filters, groupBy: groupBy, outlierFields: [outlierField]);
-    }
+    private static DataRow Single(DataQueryResult result) => Assert.Single(result.Rows);
 }

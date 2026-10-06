@@ -10,7 +10,6 @@ import DefinitionsPanel from "./components/DefinitionsPanel.jsx";
 export default function App() {
   const [dataset, setDataset] = useState(null);
   const [datasetError, setDatasetError] = useState(null);
-  const [suggestedFilters, setSuggestedFilters] = useState(null);
   const [chatResult, setChatResult] = useState(null);
 
   useEffect(() => {
@@ -28,9 +27,9 @@ export default function App() {
 
       <main>
         <CoverageCard dataset={dataset} error={datasetError} />
-        <ChatPanel onFiltersSuggested={setSuggestedFilters} onResult={setChatResult} />
+        <ChatPanel onResult={setChatResult} />
         <ResultsPanel data={chatResult} />
-        <ManualFiltersPanel suggestedFilters={suggestedFilters} dataset={dataset} />
+        <ManualFiltersPanel suggestedFilters={null} dataset={dataset} />
         <DealLookupPanel />
         <DefinitionsPanel />
       </main>

@@ -1,6 +1,6 @@
 namespace MadlanExplorer;
 
-public class QueryVerificationOutput
+public class FinalAnswerVerificationOutput
 {
     public string Outcome { get; init; } = string.Empty;
 

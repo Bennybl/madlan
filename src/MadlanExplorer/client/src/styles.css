@@ -470,6 +470,41 @@ tbody tr:hover {
   font-size: 0.85rem;
 }
 
+.query-steps {
+  margin-top: 0.75rem;
+}
+
+.query-step {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-top: 0.6rem;
+}
+
+.query-step h5 {
+  margin: 0 0 0.3rem;
+  font-size: 0.95rem;
+}
+
+.query-step-table-wrap {
+  overflow-x: auto;
+  margin-top: 0.4rem;
+}
+
+.query-step-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.query-step-table th,
+.query-step-table td {
+  text-align: right;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

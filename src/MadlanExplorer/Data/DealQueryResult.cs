@@ -23,16 +23,4 @@ public class DealQueryResult
     public IReadOnlyDictionary<string, int> ExclusionReasons { get; init; } = new Dictionary<string, int>();
 
     public IReadOnlyList<string> Warnings { get; init; } = [];
-
-    public IReadOnlyList<RequestedMetricResult> RequestedMetrics { get; init; } = [];
-
-    public IReadOnlyList<RankedMetricResult> RankedMetrics { get; init; } = [];
-
-    public GroupByField? GroupBy { get; init; }
-
-    public IReadOnlyList<GroupedQueryResult> Groups { get; init; } = [];
-
-    public IReadOnlyList<OutlierField> OutlierFields { get; init; } = [];
-
-    public IReadOnlyList<OutlierResult> Outliers { get; init; } = [];
 }

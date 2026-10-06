@@ -3,7 +3,7 @@ import { fetchJson } from "../api.js";
 import MessageBubble from "./MessageBubble.jsx";
 import ThinkingBubble from "./ThinkingBubble.jsx";
 
-const ASK_TIMEOUT_MS = 320000;
+const ASK_TIMEOUT_MS = 620000;
 
 const EXAMPLE_QUESTIONS = [
   "מה המחיר החציוני של דירת 4 חדרים בחולון ב-2025?",
@@ -12,7 +12,7 @@ const EXAMPLE_QUESTIONS = [
   "כמה תשתלם לי הדירה שלי בעוד שנה?"
 ];
 
-export default function ChatPanel({ onFiltersSuggested, onResult }) {
+export default function ChatPanel({ onResult }) {
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -61,12 +61,8 @@ export default function ChatPanel({ onFiltersSuggested, onResult }) {
 
       setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", response }]);
 
-      if (response.status === "query" && response.filters && onFiltersSuggested) {
-        onFiltersSuggested(response.filters);
-      }
-
-      if (response.status === "query" && response.result && onResult) {
-        onResult({ prompt: trimmed, filters: response.filters, result: response.result });
+      if (response.status === "query" && response.steps?.length && onResult) {
+        onResult({ prompt: trimmed, steps: response.steps });
       }
 
       if (response.status === "deal" && response.dealId && onResult) {

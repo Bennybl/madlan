@@ -6,6 +6,7 @@ namespace MadlanExplorer;
 public class SqliteDealRepository : IDealRepository
 {
     private const int MinimumMetricContributorCount = 5;
+    private const int MaxRows = 200;
 
     private const string FilterPredicate = """
         ConflictStatus = 'usable'
@@ -94,35 +95,6 @@ public class SqliteDealRepository : IDealRepository
         reader.Dispose();
         var evidence = ReadEvidence(connection, filters, evidencePageSize);
 
-        var requestedMetrics = new List<RequestedMetricResult>();
-        foreach (var metric in query.Metrics.Distinct())
-        {
-            if (metric == QueryMetric.TransactionCount)
-            {
-                continue;
-            }
-
-            var (value, dealId) = ComputeRequestedMetric(connection, filters, metric);
-            requestedMetrics.Add(new RequestedMetricResult { Metric = metric, Value = value, DealId = dealId });
-        }
-
-        var rankedMetrics = new List<RankedMetricResult>();
-        foreach (var request in query.RankedMetrics)
-        {
-            var (value, dealId) = ComputeRankedMetric(connection, filters, request.Metric, request.Rank);
-            rankedMetrics.Add(new RankedMetricResult { Metric = request.Metric, Rank = request.Rank, Value = value, DealId = dealId });
-        }
-
-        var groups = query.GroupBy is { } groupByField
-            ? ComputeGroups(connection, filters, groupByField, query.Metrics, query.RankedMetrics)
-            : [];
-
-        var outliers = new List<OutlierResult>();
-        foreach (var outlierField in query.OutlierFields.Distinct())
-        {
-            outliers.AddRange(ComputeOutliers(connection, filters, outlierField, query.GroupBy));
-        }
-
         return new DealQueryResult
         {
             TransactionCount = transactionCount,
@@ -134,14 +106,68 @@ public class SqliteDealRepository : IDealRepository
             PriceContributorDealIds = evidence.DealIds,
             PricePerSqmContributorDealIds = evidence.DealIds,
             HasMoreEvidence = evidence.HasMore,
-            Warnings = warnings,
-            RequestedMetrics = requestedMetrics,
-            RankedMetrics = rankedMetrics,
-            GroupBy = query.GroupBy,
-            Groups = groups,
-            OutlierFields = query.OutlierFields,
-            Outliers = outliers
+            Warnings = warnings
         };
+    }
+
+    /// <summary>
+    /// Executes one generic, bounded data query (see DataQuery). Every branch below builds fixed,
+    /// parameterized SQL from enum-driven column/expression mappings (DescribeGroupByColumn,
+    /// DescribeField) -- the caller (an LLM, via QueryOrchestrationService) only ever picks which
+    /// of these fixed shapes to run and with which filter/rank/limit values; it never supplies SQL
+    /// text itself.
+    /// </summary>
+    public DataQueryResult ExecuteDataQuery(DataQuery query)
+    {
+        using var connection = _datasetStore.OpenConnection();
+        var filters = query.Filters;
+        var totalCount = ExecuteCountValue(connection, filters);
+        var groupColumn = query.GroupBy is { } groupBy ? DescribeGroupByColumn(groupBy) : null;
+
+        List<DataRow> rows;
+        switch (query.Aggregate)
+        {
+            case DataAggregate.Count:
+                rows = groupColumn is null
+                    ? [new DataRow { Value = totalCount }]
+                    : GroupedCount(connection, filters, groupColumn, query.Limit, query.Descending);
+                break;
+
+            case DataAggregate.Outliers:
+            {
+                var field = query.Field ?? throw new ArgumentException("Field is required for Outliers.", nameof(query));
+                var (expression, condition) = DescribeField(field);
+                rows = Outliers(connection, filters, expression, condition, groupColumn);
+                break;
+            }
+
+            case DataAggregate.Average:
+            case DataAggregate.Median:
+            {
+                var field = query.Field ?? throw new ArgumentException("Field is required for this aggregate.", nameof(query));
+                var (expression, condition) = DescribeField(field);
+                rows = groupColumn is null
+                    ? AverageOrMedianUngrouped(connection, filters, expression, condition, query.Aggregate)
+                    : AverageOrMedianGrouped(connection, filters, groupColumn, expression, condition, query.Aggregate, query.Limit, query.Descending);
+                break;
+            }
+
+            case DataAggregate.Min:
+            case DataAggregate.Max:
+            {
+                var field = query.Field ?? throw new ArgumentException("Field is required for this aggregate.", nameof(query));
+                var (expression, condition) = DescribeField(field);
+                rows = groupColumn is null
+                    ? MinMaxUngrouped(connection, filters, expression, condition, query.Aggregate, query.Rank)
+                    : MinMaxGrouped(connection, filters, groupColumn, expression, condition, query.Aggregate, query.Rank, query.Limit, query.Descending);
+                break;
+            }
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(query), query.Aggregate, "Unsupported aggregate.");
+        }
+
+        return new DataQueryResult { TransactionCount = totalCount, Rows = rows };
     }
 
     public DatasetFacts GetDatasetFacts()
@@ -246,247 +272,195 @@ public class SqliteDealRepository : IDealRepository
             """;
     }
 
-    private static (decimal? Value, string? DealId) ComputeRequestedMetric(SqliteConnection connection, DealFilters filters, QueryMetric metric)
+    private static int ExecuteCountValue(SqliteConnection connection, DealFilters filters)
     {
-        var (expression, condition, aggregation) = DescribeMetric(metric);
         using var command = connection.CreateCommand();
-        command.CommandText = aggregation switch
+        command.CommandText = $"WITH {BuildFilteredCte()} SELECT COUNT(*) FROM Filtered;";
+        AddFilterParameters(command, filters);
+        return Convert.ToInt32(command.ExecuteScalar());
+    }
+
+    private static List<DataRow> GroupedCount(SqliteConnection connection, DealFilters filters, string column, int? limit, bool descending)
+    {
+        using var command = connection.CreateCommand();
+        var orderClause = limit.HasValue ? $"ORDER BY Cnt {(descending ? "DESC" : "ASC")}" : $"ORDER BY {column}";
+        var limitClause = $"LIMIT {Math.Clamp(limit ?? MaxRows, 1, MaxRows)}";
+        command.CommandText = $"""
+            WITH {BuildFilteredCte()}
+            SELECT {column} AS GroupValue, COUNT(*) AS Cnt
+            FROM Filtered
+            WHERE {column} IS NOT NULL
+            GROUP BY {column}
+            {orderClause}
+            {limitClause};
+            """;
+        AddFilterParameters(command, filters);
+        using var reader = command.ExecuteReader();
+        var rows = new List<DataRow>();
+        while (reader.Read())
         {
-            MetricAggregation.Min => $"""
+            rows.Add(new DataRow
+            {
+                GroupValue = Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture),
+                Value = reader.GetInt32(1)
+            });
+        }
+
+        return rows;
+    }
+
+    private static List<DataRow> AverageOrMedianUngrouped(
+        SqliteConnection connection, DealFilters filters, string expression, string condition, DataAggregate aggregate)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = aggregate == DataAggregate.Average
+            ? $"""
                 WITH {BuildFilteredCte()}
-                SELECT DealId, {expression} AS MetricValue
-                FROM Filtered
-                WHERE {condition}
-                ORDER BY MetricValue ASC
-                LIMIT 1;
-                """,
-            MetricAggregation.Max => $"""
-                WITH {BuildFilteredCte()}
-                SELECT DealId, {expression} AS MetricValue
-                FROM Filtered
-                WHERE {condition}
-                ORDER BY MetricValue DESC
-                LIMIT 1;
-                """,
-            MetricAggregation.Average => $"""
-                WITH {BuildFilteredCte()}
-                SELECT NULL, AVG({expression})
+                SELECT AVG({expression})
                 FROM Filtered
                 WHERE {condition};
-                """,
-            MetricAggregation.Median => $"""
+                """
+            : $"""
                 WITH {BuildFilteredCte()},
                 Ranked AS (
                     SELECT {expression} AS Value, ROW_NUMBER() OVER (ORDER BY {expression}) AS Position, COUNT(*) OVER () AS Total
                     FROM Filtered
                     WHERE {condition}
                 )
-                SELECT NULL, AVG(Value)
+                SELECT AVG(Value)
                 FROM Ranked
                 WHERE Position IN ((Total + 1) / 2, (Total + 2) / 2);
-                """,
-            _ => throw new ArgumentOutOfRangeException(nameof(metric), metric, "Unsupported metric aggregation.")
-        };
+                """;
         AddFilterParameters(command, filters);
-
-        using var reader = command.ExecuteReader();
-        if (!reader.Read() || reader.IsDBNull(1))
-        {
-            return (null, null);
-        }
-
-        var dealId = reader.IsDBNull(0) ? null : reader.GetString(0);
-        var value = Convert.ToDecimal(reader.GetDouble(1));
-        return (value, dealId);
+        var result = command.ExecuteScalar();
+        var value = result is null or DBNull ? (decimal?)null : Convert.ToDecimal(result);
+        return [new DataRow { Value = value }];
     }
 
-    private static (decimal? Value, string? DealId) ComputeRankedMetric(SqliteConnection connection, DealFilters filters, QueryMetric metric, int rank)
+    private static List<DataRow> AverageOrMedianGrouped(
+        SqliteConnection connection, DealFilters filters, string column, string expression, string condition,
+        DataAggregate aggregate, int? limit, bool descending)
     {
-        var (expression, condition, aggregation) = DescribeMetric(metric);
-        if (aggregation is not (MetricAggregation.Min or MetricAggregation.Max))
+        using var command = connection.CreateCommand();
+        var orderClause = limit.HasValue ? $"ORDER BY MetricValue {(descending ? "DESC" : "ASC")}" : "ORDER BY GroupValue";
+        var limitClause = $"LIMIT {Math.Clamp(limit ?? MaxRows, 1, MaxRows)}";
+        command.CommandText = aggregate == DataAggregate.Average
+            ? $"""
+                WITH {BuildFilteredCte()}
+                SELECT {column} AS GroupValue, AVG({expression}) AS MetricValue
+                FROM Filtered
+                WHERE {condition} AND {column} IS NOT NULL
+                GROUP BY {column}
+                {orderClause}
+                {limitClause};
+                """
+            : $"""
+                WITH {BuildFilteredCte()},
+                Ranked AS (
+                    SELECT {column} AS GroupValue, {expression} AS Value,
+                           ROW_NUMBER() OVER (PARTITION BY {column} ORDER BY {expression}) AS Position,
+                           COUNT(*) OVER (PARTITION BY {column}) AS Total
+                    FROM Filtered
+                    WHERE {condition} AND {column} IS NOT NULL
+                )
+                SELECT GroupValue, AVG(Value) AS MetricValue
+                FROM Ranked
+                WHERE Position IN ((Total + 1) / 2, (Total + 2) / 2)
+                GROUP BY GroupValue
+                {orderClause}
+                {limitClause};
+                """;
+        AddFilterParameters(command, filters);
+        using var reader = command.ExecuteReader();
+        var rows = new List<DataRow>();
+        while (reader.Read())
         {
-            throw new ArgumentOutOfRangeException(nameof(metric), metric, "Only Min/Max metrics can be ranked.");
+            rows.Add(new DataRow
+            {
+                GroupValue = Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture),
+                Value = reader.IsDBNull(1) ? null : Convert.ToDecimal(reader.GetDouble(1))
+            });
         }
 
-        var orderDirection = aggregation == MetricAggregation.Min ? "ASC" : "DESC";
+        return rows;
+    }
+
+    private static List<DataRow> MinMaxUngrouped(
+        SqliteConnection connection, DealFilters filters, string expression, string condition, DataAggregate aggregate, int rank)
+    {
+        var direction = aggregate == DataAggregate.Min ? "ASC" : "DESC";
         using var command = connection.CreateCommand();
         command.CommandText = $"""
             WITH {BuildFilteredCte()}
             SELECT DealId, {expression} AS MetricValue
             FROM Filtered
             WHERE {condition}
-            ORDER BY MetricValue {orderDirection}
+            ORDER BY MetricValue {direction}
             LIMIT 1 OFFSET $offset;
             """;
         AddFilterParameters(command, filters);
-        command.Parameters.AddWithValue("$offset", rank - 1);
+        command.Parameters.AddWithValue("$offset", Math.Max(0, rank - 1));
 
         using var reader = command.ExecuteReader();
         if (!reader.Read() || reader.IsDBNull(1))
         {
-            return (null, null);
+            return [];
         }
 
-        var dealId = reader.IsDBNull(0) ? null : reader.GetString(0);
-        var value = Convert.ToDecimal(reader.GetDouble(1));
-        return (value, dealId);
+        return [new DataRow { DealId = reader.GetString(0), Value = Convert.ToDecimal(reader.GetDouble(1)) }];
     }
 
-    private const int MaxGroups = 200;
-
-    private static IReadOnlyList<GroupedQueryResult> ComputeGroups(
-        SqliteConnection connection,
-        DealFilters filters,
-        GroupByField groupBy,
-        IReadOnlyList<QueryMetric> metrics,
-        IReadOnlyList<RankedMetricRequest> rankedMetrics)
+    private static List<DataRow> MinMaxGrouped(
+        SqliteConnection connection, DealFilters filters, string column, string expression, string condition,
+        DataAggregate aggregate, int rank, int? limit, bool descending)
     {
-        var column = DescribeGroupByColumn(groupBy);
-        var groups = new Dictionary<string, GroupBuilder>();
-        var order = new List<string>();
-
-        GroupBuilder EnsureGroup(string key)
-        {
-            if (!groups.TryGetValue(key, out var builder))
-            {
-                builder = new GroupBuilder { GroupValue = key };
-                groups[key] = builder;
-                order.Add(key);
-            }
-
-            return builder;
-        }
-
-        using (var command = connection.CreateCommand())
-        {
-            command.CommandText = $"""
-                WITH {BuildFilteredCte()}
-                SELECT {column} AS GroupValue, COUNT(*) AS Cnt
-                FROM Filtered
-                WHERE {column} IS NOT NULL
-                GROUP BY {column}
-                ORDER BY {column}
-                LIMIT {MaxGroups};
-                """;
-            AddFilterParameters(command, filters);
-            using var reader = command.ExecuteReader();
-            while (reader.Read())
-            {
-                var key = Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture) ?? "";
-                EnsureGroup(key).TransactionCount = reader.GetInt32(1);
-            }
-        }
-
-        foreach (var metric in metrics.Distinct())
-        {
-            if (metric == QueryMetric.TransactionCount)
-            {
-                continue;
-            }
-
-            foreach (var (key, value, dealId) in ComputeMetricByGroup(connection, filters, column, metric, rank: 1))
-            {
-                EnsureGroup(key).RequestedMetrics.Add(new RequestedMetricResult { Metric = metric, Value = value, DealId = dealId });
-            }
-        }
-
-        foreach (var request in rankedMetrics)
-        {
-            foreach (var (key, value, dealId) in ComputeMetricByGroup(connection, filters, column, request.Metric, request.Rank))
-            {
-                EnsureGroup(key).RankedMetrics.Add(new RankedMetricResult { Metric = request.Metric, Rank = request.Rank, Value = value, DealId = dealId });
-            }
-        }
-
-        return order.Select(key => groups[key].Build()).ToList();
-    }
-
-    private static List<(string GroupValue, decimal? Value, string? DealId)> ComputeMetricByGroup(
-        SqliteConnection connection, DealFilters filters, string groupColumn, QueryMetric metric, int rank)
-    {
-        var (expression, condition, aggregation) = DescribeMetric(metric);
+        var direction = aggregate == DataAggregate.Min ? "ASC" : "DESC";
+        var outerOrder = limit.HasValue ? $"ORDER BY MetricValue {(descending ? "DESC" : "ASC")}" : "ORDER BY GroupValue";
+        var limitClause = $"LIMIT {Math.Clamp(limit ?? MaxRows, 1, MaxRows)}";
         using var command = connection.CreateCommand();
-
-        if (aggregation is MetricAggregation.Min or MetricAggregation.Max)
-        {
-            var orderDirection = aggregation == MetricAggregation.Min ? "ASC" : "DESC";
-            command.CommandText = $"""
-                WITH {BuildFilteredCte()},
-                RankedInGroup AS (
-                    SELECT DealId, {groupColumn} AS GroupValue, {expression} AS MetricValue,
-                           ROW_NUMBER() OVER (PARTITION BY {groupColumn} ORDER BY {expression} {orderDirection}) AS Position
-                    FROM Filtered
-                    WHERE {condition} AND {groupColumn} IS NOT NULL
-                )
-                SELECT GroupValue, DealId, MetricValue
-                FROM RankedInGroup
-                WHERE Position = $rank
-                ORDER BY GroupValue
-                LIMIT {MaxGroups};
-                """;
-            command.Parameters.AddWithValue("$rank", rank);
-        }
-        else if (aggregation == MetricAggregation.Average)
-        {
-            command.CommandText = $"""
-                WITH {BuildFilteredCte()}
-                SELECT {groupColumn} AS GroupValue, NULL AS DealId, AVG({expression}) AS MetricValue
+        command.CommandText = $"""
+            WITH {BuildFilteredCte()},
+            RankedInGroup AS (
+                SELECT DealId, {column} AS GroupValue, {expression} AS MetricValue,
+                       ROW_NUMBER() OVER (PARTITION BY {column} ORDER BY {expression} {direction}) AS Position
                 FROM Filtered
-                WHERE {condition} AND {groupColumn} IS NOT NULL
-                GROUP BY {groupColumn}
-                ORDER BY {groupColumn}
-                LIMIT {MaxGroups};
-                """;
-        }
-        else
-        {
-            command.CommandText = $"""
-                WITH {BuildFilteredCte()},
-                Ranked AS (
-                    SELECT {groupColumn} AS GroupValue, {expression} AS Value,
-                           ROW_NUMBER() OVER (PARTITION BY {groupColumn} ORDER BY {expression}) AS Position,
-                           COUNT(*) OVER (PARTITION BY {groupColumn}) AS Total
-                    FROM Filtered
-                    WHERE {condition} AND {groupColumn} IS NOT NULL
-                )
-                SELECT GroupValue, NULL AS DealId, AVG(Value) AS MetricValue
-                FROM Ranked
-                WHERE Position IN ((Total + 1) / 2, (Total + 2) / 2)
-                GROUP BY GroupValue
-                ORDER BY GroupValue
-                LIMIT {MaxGroups};
-                """;
-        }
-
+                WHERE {condition} AND {column} IS NOT NULL
+            )
+            SELECT GroupValue, DealId, MetricValue
+            FROM RankedInGroup
+            WHERE Position = $rank
+            {outerOrder}
+            {limitClause};
+            """;
         AddFilterParameters(command, filters);
+        command.Parameters.AddWithValue("$rank", Math.Max(1, rank));
+
         using var reader = command.ExecuteReader();
-        var results = new List<(string, decimal?, string?)>();
+        var rows = new List<DataRow>();
         while (reader.Read())
         {
-            var key = Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture) ?? "";
-            var dealId = reader.IsDBNull(1) ? null : reader.GetString(1);
-            var value = reader.IsDBNull(2) ? (decimal?)null : Convert.ToDecimal(reader.GetDouble(2));
-            results.Add((key, value, dealId));
+            rows.Add(new DataRow
+            {
+                GroupValue = Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture),
+                DealId = reader.IsDBNull(1) ? null : reader.GetString(1),
+                Value = reader.IsDBNull(2) ? null : Convert.ToDecimal(reader.GetDouble(2))
+            });
         }
 
-        return results;
+        return rows;
     }
-
-    private const int MaxOutliers = 200;
 
     /// <summary>
     /// Flags deals whose value for a field falls outside Q1 - 1.5*IQR .. Q3 + 1.5*IQR (the
     /// standard Tukey fence), computed within each group (or the whole filtered sample when
-    /// groupBy is null) using the same nearest-rank percentile technique already used for the
-    /// median. This is a distribution-agnostic outlier rule, not a test of normality -- it never
-    /// claims to determine whether the data follows a normal distribution.
+    /// groupColumn is null) using the same nearest-rank percentile technique used for the median.
+    /// This is a distribution-agnostic outlier rule, not a test of normality -- it never claims to
+    /// determine whether the data follows a normal distribution.
     /// </summary>
-    private static List<OutlierResult> ComputeOutliers(SqliteConnection connection, DealFilters filters, OutlierField field, GroupByField? groupBy)
+    private static List<DataRow> Outliers(SqliteConnection connection, DealFilters filters, string expression, string condition, string? groupColumn)
     {
-        var (expression, condition) = DescribeOutlierField(field);
-        var partitionColumn = groupBy is { } groupByField ? DescribeGroupByColumn(groupByField) : null;
-        var groupValueSelect = partitionColumn is not null ? partitionColumn : "NULL";
-        var groupFilter = partitionColumn is not null ? $"AND {partitionColumn} IS NOT NULL" : "";
+        var groupValueSelect = groupColumn ?? "NULL";
+        var groupFilter = groupColumn is not null ? $"AND {groupColumn} IS NOT NULL" : "";
         const string partitionClause = "PARTITION BY GroupValue";
 
         using var command = connection.CreateCommand();
@@ -518,17 +492,16 @@ public class SqliteDealRepository : IDealRepository
             WHERE q.Q1 IS NOT NULL AND q.Q3 IS NOT NULL
               AND (r.Value < q.Q1 - 1.5 * (q.Q3 - q.Q1) OR r.Value > q.Q3 + 1.5 * (q.Q3 - q.Q1))
             ORDER BY r.GroupValue, r.Value
-            LIMIT {MaxOutliers};
+            LIMIT {MaxRows};
             """;
         AddFilterParameters(command, filters);
 
         using var reader = command.ExecuteReader();
-        var results = new List<OutlierResult>();
+        var rows = new List<DataRow>();
         while (reader.Read())
         {
-            results.Add(new OutlierResult
+            rows.Add(new DataRow
             {
-                Field = field,
                 GroupValue = reader.IsDBNull(0) ? null : Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture),
                 DealId = reader.GetString(1),
                 Value = Convert.ToDecimal(reader.GetDouble(2)),
@@ -537,24 +510,21 @@ public class SqliteDealRepository : IDealRepository
             });
         }
 
-        return results;
+        return rows;
     }
 
-    private static (string Expression, string Condition) DescribeOutlierField(OutlierField field)
+    private static (string Expression, string Condition) DescribeField(DataField field)
     {
-        var metric = field switch
+        return field switch
         {
-            OutlierField.Price => QueryMetric.AveragePrice,
-            OutlierField.PricePerSqm => QueryMetric.AveragePricePerSqm,
-            OutlierField.SizeSqm => QueryMetric.AverageSizeSqm,
-            OutlierField.Rooms => QueryMetric.AverageRooms,
-            OutlierField.Floor => QueryMetric.AverageFloor,
-            OutlierField.YearBuilt => QueryMetric.AverageYearBuilt,
-            _ => throw new ArgumentOutOfRangeException(nameof(field), field, "Unsupported outlier field.")
+            DataField.Price => ("PriceNis", "PriceNis > 0"),
+            DataField.PricePerSqm => ("(PriceNis * 1.0 / SizeSqm)", "PriceNis > 0 AND SizeSqm > 0"),
+            DataField.SizeSqm => ("SizeSqm", "SizeSqm IS NOT NULL"),
+            DataField.Rooms => ("Rooms", "Rooms IS NOT NULL"),
+            DataField.Floor => ("Floor", "Floor IS NOT NULL"),
+            DataField.YearBuilt => ("YearBuilt", "YearBuilt IS NOT NULL"),
+            _ => throw new ArgumentOutOfRangeException(nameof(field), field, "Unsupported field.")
         };
-
-        var (expression, condition, _) = DescribeMetric(metric);
-        return (expression, condition);
     }
 
     private static string DescribeGroupByColumn(GroupByField field)
@@ -574,60 +544,6 @@ public class SqliteDealRepository : IDealRepository
             GroupByField.HasBalcony => "HasBalcony",
             GroupByField.HasSafeRoom => "HasSafeRoom",
             _ => throw new ArgumentOutOfRangeException(nameof(field), field, "Unsupported group-by field.")
-        };
-    }
-
-    private class GroupBuilder
-    {
-        public string GroupValue { get; init; } = string.Empty;
-        public int TransactionCount { get; set; }
-        public List<RequestedMetricResult> RequestedMetrics { get; } = [];
-        public List<RankedMetricResult> RankedMetrics { get; } = [];
-
-        public GroupedQueryResult Build()
-        {
-            return new GroupedQueryResult
-            {
-                GroupValue = GroupValue,
-                TransactionCount = TransactionCount,
-                RequestedMetrics = RequestedMetrics,
-                RankedMetrics = RankedMetrics
-            };
-        }
-    }
-
-    private enum MetricAggregation { Min, Max, Average, Median }
-
-    private static (string Expression, string Condition, MetricAggregation Aggregation) DescribeMetric(QueryMetric metric)
-    {
-        return metric switch
-        {
-            QueryMetric.MinPrice => ("PriceNis", "PriceNis > 0", MetricAggregation.Min),
-            QueryMetric.MaxPrice => ("PriceNis", "PriceNis > 0", MetricAggregation.Max),
-            QueryMetric.AveragePrice => ("PriceNis", "PriceNis > 0", MetricAggregation.Average),
-            QueryMetric.MedianPrice => ("PriceNis", "PriceNis > 0", MetricAggregation.Median),
-            QueryMetric.MinPricePerSqm => ("(PriceNis * 1.0 / SizeSqm)", "PriceNis > 0 AND SizeSqm > 0", MetricAggregation.Min),
-            QueryMetric.MaxPricePerSqm => ("(PriceNis * 1.0 / SizeSqm)", "PriceNis > 0 AND SizeSqm > 0", MetricAggregation.Max),
-            QueryMetric.AveragePricePerSqm => ("(PriceNis * 1.0 / SizeSqm)", "PriceNis > 0 AND SizeSqm > 0", MetricAggregation.Average),
-            QueryMetric.MedianPricePerSqm => ("(PriceNis * 1.0 / SizeSqm)", "PriceNis > 0 AND SizeSqm > 0", MetricAggregation.Median),
-            QueryMetric.MinSizeSqm => ("SizeSqm", "SizeSqm IS NOT NULL", MetricAggregation.Min),
-            QueryMetric.MaxSizeSqm => ("SizeSqm", "SizeSqm IS NOT NULL", MetricAggregation.Max),
-            QueryMetric.AverageSizeSqm => ("SizeSqm", "SizeSqm IS NOT NULL", MetricAggregation.Average),
-            QueryMetric.MedianSizeSqm => ("SizeSqm", "SizeSqm IS NOT NULL", MetricAggregation.Median),
-            QueryMetric.MinRooms => ("Rooms", "Rooms IS NOT NULL", MetricAggregation.Min),
-            QueryMetric.MaxRooms => ("Rooms", "Rooms IS NOT NULL", MetricAggregation.Max),
-            QueryMetric.AverageRooms => ("Rooms", "Rooms IS NOT NULL", MetricAggregation.Average),
-            QueryMetric.MedianRooms => ("Rooms", "Rooms IS NOT NULL", MetricAggregation.Median),
-            QueryMetric.MinFloor => ("Floor", "Floor IS NOT NULL", MetricAggregation.Min),
-            QueryMetric.MaxFloor => ("Floor", "Floor IS NOT NULL", MetricAggregation.Max),
-            QueryMetric.AverageFloor => ("Floor", "Floor IS NOT NULL", MetricAggregation.Average),
-            QueryMetric.MedianFloor => ("Floor", "Floor IS NOT NULL", MetricAggregation.Median),
-            QueryMetric.MinYearBuilt => ("YearBuilt", "YearBuilt IS NOT NULL", MetricAggregation.Min),
-            QueryMetric.MaxYearBuilt => ("YearBuilt", "YearBuilt IS NOT NULL", MetricAggregation.Max),
-            QueryMetric.AverageYearBuilt => ("YearBuilt", "YearBuilt IS NOT NULL", MetricAggregation.Average),
-            QueryMetric.MedianYearBuilt => ("YearBuilt", "YearBuilt IS NOT NULL", MetricAggregation.Median),
-            QueryMetric.TransactionCount => throw new ArgumentOutOfRangeException(nameof(metric), metric, "Transaction count does not need a metric query."),
-            _ => throw new ArgumentOutOfRangeException(nameof(metric), metric, "Unsupported metric.")
         };
     }
 

@@ -1,6 +1,6 @@
 namespace MadlanExplorer;
 
-public enum OutlierField
+public enum DataField
 {
     Price,
     PricePerSqm,

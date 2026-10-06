@@ -28,10 +28,7 @@ public static class Application
         builder.Services.AddSingleton<IDealRepository, SqliteDealRepository>();
         builder.Services.AddSingleton<QueryService>();
         builder.Services.AddHttpClient<ILlmProvider, GrokLlmProvider>();
-        builder.Services.AddSingleton<QueryGenerationService>();
-        builder.Services.AddSingleton<QueryVerificationService>();
-        builder.Services.AddSingleton<ResultSummaryService>();
-        builder.Services.AddSingleton<ResultVerificationService>();
+        builder.Services.AddSingleton<QueryOrchestrationService>();
         builder.Services.AddSingleton<MadlanApplicationService>();
 
         var app = builder.Build();

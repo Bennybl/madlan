@@ -1,5 +1,3 @@
-import { describeFilters } from "../format.js";
-
 export default function MessageBubble({ message }) {
   if (message.role === "user") {
     return (
@@ -43,15 +41,13 @@ export default function MessageBubble({ message }) {
   return (
     <div className="chat-message chat-message-assistant">
       <div className="chat-bubble chat-bubble-assistant">
-        <p className="interpretation-line">איך הבנו את השאלה: {describeFilters(response.filters)}</p>
-
         {response.summary ? (
           <p className="verified-summary">{response.summary}</p>
         ) : (
-          <p className="hint">{response.message || "סיכום מאומת אינו זמין כעת. ראו את טבלת התוצאות המלאה מתחת לצ'אט."}</p>
+          <p className="hint">{response.message || "סיכום מאומת אינו זמין כעת. ראו את שלבי הבדיקה בטבלת התוצאות מתחת לצ'אט."}</p>
         )}
 
-        <p className="hint">טבלת התוצאות המלאה מוצגת מתחת לצ'אט.</p>
+        <p className="hint">שלבי הבדיקה והנתונים המלאים מוצגים בטבלת התוצאות מתחת לצ'אט.</p>
       </div>
     </div>
   );

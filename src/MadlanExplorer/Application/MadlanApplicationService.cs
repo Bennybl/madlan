@@ -7,32 +7,23 @@ public class MadlanApplicationService
 {
     private static readonly Regex DealIdPattern = new(@"\bD\d{6}\b", RegexOptions.Compiled);
 
-    private readonly QueryGenerationService _queryGenerationService;
-    private readonly QueryVerificationService _queryVerificationService;
+    private readonly QueryOrchestrationService _orchestrationService;
     private readonly QueryService _queryService;
-    private readonly ResultSummaryService _resultSummaryService;
-    private readonly ResultVerificationService _resultVerificationService;
     private readonly IDealRepository _dealRepository;
     private readonly IDatasetMetadataProvider _datasetMetadataProvider;
     private readonly LlmOptions _options;
     private readonly MessagesOptions _messages;
 
     public MadlanApplicationService(
-        QueryGenerationService queryGenerationService,
-        QueryVerificationService queryVerificationService,
+        QueryOrchestrationService orchestrationService,
         QueryService queryService,
-        ResultSummaryService resultSummaryService,
-        ResultVerificationService resultVerificationService,
         IDealRepository dealRepository,
         IDatasetMetadataProvider datasetMetadataProvider,
         IOptions<LlmOptions> options,
         IOptions<MessagesOptions> messages)
     {
-        _queryGenerationService = queryGenerationService;
-        _queryVerificationService = queryVerificationService;
+        _orchestrationService = orchestrationService;
         _queryService = queryService;
-        _resultSummaryService = resultSummaryService;
-        _resultVerificationService = resultVerificationService;
         _dealRepository = dealRepository;
         _datasetMetadataProvider = datasetMetadataProvider;
         _options = options.Value;
@@ -85,67 +76,16 @@ public class MadlanApplicationService
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(_options.ServerTimeoutSeconds));
-        var workflowToken = timeoutCts.Token;
-
-        var generated = await _queryGenerationService.GenerateAsync(prompt, workflowToken);
-        if (generated.Status != "query" || generated.Filters is null)
-        {
-            return generated;
-        }
-
-        var metrics = generated.Metrics ?? [];
-        var rankedMetrics = generated.RankedMetrics ?? [];
-        var groupBy = generated.GroupBy;
-        var outlierFields = generated.OutlierFields ?? [];
-        var verification = await _queryVerificationService.VerifyAsync(prompt, generated.Filters, metrics, rankedMetrics, groupBy, outlierFields, workflowToken);
-        if (verification.Outcome != "approved")
-        {
-            return new AskResponse
-            {
-                Prompt = prompt,
-                Status = "clarification",
-                Message = verification.Message
-            };
-        }
-
-        var filters = generated.Filters;
-        var result = _queryService.Query(filters, metrics, rankedMetrics, groupBy, outlierFields);
-        var datasetHash = _datasetMetadataProvider.Metadata.FileHash;
-
-        string? summary = null;
-        string? summaryUnavailableMessage = null;
-        try
-        {
-            var candidate = await _resultSummaryService.SummarizeAsync(prompt, filters, datasetHash, result, workflowToken);
-            var resultVerification = await _resultVerificationService.VerifyAsync(prompt, filters, datasetHash, result, candidate, workflowToken);
-
-            if (resultVerification.Outcome == "approved")
-            {
-                summary = candidate.Summary;
-            }
-            else
-            {
-                summaryUnavailableMessage = _messages.SummaryUnavailable;
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
-        {
-            summaryUnavailableMessage = _messages.SummaryUnavailable;
-        }
+        var result = await _orchestrationService.RunAsync(prompt, timeoutCts.Token);
 
         return new AskResponse
         {
             Prompt = prompt,
-            Status = "query",
-            Filters = filters,
-            Metrics = metrics,
-            RankedMetrics = rankedMetrics,
-            GroupBy = groupBy,
-            OutlierFields = outlierFields,
-            Result = result,
-            DatasetHash = datasetHash,
-            Summary = summary,
-            Message = summaryUnavailableMessage
+            Status = result.Status,
+            Message = result.Message,
+            Summary = result.Summary,
+            Steps = result.Steps,
+            DatasetHash = _datasetMetadataProvider.Metadata.FileHash
         };
     }
 }
