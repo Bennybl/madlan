@@ -80,6 +80,7 @@ public class ResultSummaryService
             "price_per_sqm_metric_has_fewer_than_five_contributors -> \"מחיר למ\\\"ר חציוני מבוסס על פחות מחמש עסקאות, מדגם קטן שיש להתייחס אליו בזהירות\"; " +
             "supplied_price_per_sqm_mismatch -> \"נמצאה עסקה שבה המחיר למ\\\"ר שדווח אינו תואם למחיר ולשטח שדווחו\". " +
             "requestedMetrics lists each specific statistic the question asked for beyond the always-present transaction count, median price and median price per square meter; mention every entry in it. Each entry's dealId (present only for Min/Max metrics) is the specific matching deal to name for that statistic. " +
+            "rankedMetrics lists each Nth-highest/lowest statistic the question asked for (e.g. rank 2 of MaxPrice is \"the second most expensive price\"); mention every entry in it the same way, naming its rank in plain Hebrew (\"השני\", \"השלישי\" etc.) and its specific matching dealId. " +
             "Return JSON with summary (Hebrew text) and referencedDealIds (deal IDs from the evidence that support the summary; empty only when there is no evidence). " +
             $"Original user prompt: {prompt} " +
             $"Calculated evidence: {evidenceJson}";

@@ -1,4 +1,4 @@
-import { NUMBER_FORMAT, formatCurrency, formatMetricValue, METRIC_LABELS, SINGLE_DEAL_METRICS, describeWarning } from "../format.js";
+import { NUMBER_FORMAT, formatCurrency, formatMetricValue, METRIC_LABELS, SINGLE_DEAL_METRICS, describeWarning, describeRankedMetric } from "../format.js";
 import DealDetailCard from "./DealDetailCard.jsx";
 import EvidenceTable from "./EvidenceTable.jsx";
 
@@ -10,6 +10,7 @@ export default function ResultMetrics({ result }) {
   }
 
   const requestedMetrics = result.requestedMetrics || [];
+  const rankedMetrics = result.rankedMetrics || [];
   const singleDealMetrics = requestedMetrics.filter((m) => SINGLE_DEAL_METRICS.has(m.metric) && m.dealId);
 
   return (
@@ -36,15 +37,28 @@ export default function ResultMetrics({ result }) {
             {metricResult.dealId && <p className="metric-count">עסקה: {metricResult.dealId}</p>}
           </article>
         ))}
+        {rankedMetrics.map((rankedResult) => (
+          <article className="metric-card" key={`${rankedResult.metric}-${rankedResult.rank}`}>
+            <h3>{describeRankedMetric(rankedResult.metric, rankedResult.rank)}</h3>
+            <p className="metric-value">{formatMetricValue(rankedResult.metric, rankedResult.value)}</p>
+            {rankedResult.dealId && <p className="metric-count">עסקה: {rankedResult.dealId}</p>}
+          </article>
+        ))}
       </div>
 
-      {singleDealMetrics.length > 0 && (
+      {(singleDealMetrics.length > 0 || rankedMetrics.some((r) => r.dealId)) && (
         <div className="single-deal-detail">
           <h4>פרטי העסקה המבוקשת</h4>
           {singleDealMetrics.map((metricResult) => (
             <div key={metricResult.metric}>
               <p className="hint">{METRIC_LABELS[metricResult.metric] || metricResult.metric}</p>
               <DealDetailCard dealId={metricResult.dealId} />
+            </div>
+          ))}
+          {rankedMetrics.filter((r) => r.dealId).map((rankedResult) => (
+            <div key={`${rankedResult.metric}-${rankedResult.rank}`}>
+              <p className="hint">{describeRankedMetric(rankedResult.metric, rankedResult.rank)}</p>
+              <DealDetailCard dealId={rankedResult.dealId} />
             </div>
           ))}
         </div>

@@ -42,6 +42,26 @@ export const SINGLE_DEAL_METRICS = new Set([
   "MinFloor", "MaxFloor", "MinYearBuilt", "MaxYearBuilt"
 ]);
 
+const RANK_FIELD_INFO = {
+  Price: { noun: "המחיר", min: "הזול", max: "היקר", suffix: " (₪)" },
+  PricePerSqm: { noun: 'מחיר למ"ר', min: "הזול", max: "היקר", suffix: ' (₪)' },
+  SizeSqm: { noun: "השטח", min: "הקטן", max: "הגדול", suffix: ' (מ"ר)' },
+  Rooms: { noun: "מספר החדרים", min: "הנמוך", max: "הגבוה", suffix: "" },
+  Floor: { noun: "הקומה", min: "הנמוכה", max: "הגבוהה", suffix: "" },
+  YearBuilt: { noun: "שנת הבנייה", min: "המוקדמת", max: "המאוחרת", suffix: "" }
+};
+
+export function describeRankedMetric(metric, rank) {
+  const isMax = metric.startsWith("Max");
+  const field = metric.replace(/^(Min|Max)/, "");
+  const info = RANK_FIELD_INFO[field];
+  if (!info) return `${METRIC_LABELS[metric] || metric} — דירוג ${rank}`;
+
+  const adjective = isMax ? info.max : info.min;
+  const rankPhrase = rank <= 1 ? "ביותר" : `ה-${rank} ביותר`;
+  return `${info.noun} ${adjective} ${rankPhrase}${info.suffix}`;
+}
+
 export function formatMetricValue(metric, value) {
   if (value === null || value === undefined) return "—";
   return CURRENCY_METRICS.has(metric) ? formatCurrency(value) : NUMBER_FORMAT.format(value);

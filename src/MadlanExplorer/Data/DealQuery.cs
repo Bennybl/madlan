@@ -7,4 +7,6 @@ public class DealQuery
     public int EvidencePageSize { get; init; } = 100;
 
     public IReadOnlyList<QueryMetric> Metrics { get; init; } = [];
+
+    public IReadOnlyList<RankedMetricRequest> RankedMetrics { get; init; } = [];
 }

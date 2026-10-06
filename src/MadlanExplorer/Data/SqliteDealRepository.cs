@@ -106,6 +106,13 @@ public class SqliteDealRepository : IDealRepository
             requestedMetrics.Add(new RequestedMetricResult { Metric = metric, Value = value, DealId = dealId });
         }
 
+        var rankedMetrics = new List<RankedMetricResult>();
+        foreach (var request in query.RankedMetrics)
+        {
+            var (value, dealId) = ComputeRankedMetric(connection, filters, request.Metric, request.Rank);
+            rankedMetrics.Add(new RankedMetricResult { Metric = request.Metric, Rank = request.Rank, Value = value, DealId = dealId });
+        }
+
         return new DealQueryResult
         {
             TransactionCount = transactionCount,
@@ -118,7 +125,8 @@ public class SqliteDealRepository : IDealRepository
             PricePerSqmContributorDealIds = evidence.DealIds,
             HasMoreEvidence = evidence.HasMore,
             Warnings = warnings,
-            RequestedMetrics = requestedMetrics
+            RequestedMetrics = requestedMetrics,
+            RankedMetrics = rankedMetrics
         };
     }
 
@@ -263,6 +271,38 @@ public class SqliteDealRepository : IDealRepository
             _ => throw new ArgumentOutOfRangeException(nameof(metric), metric, "Unsupported metric aggregation.")
         };
         AddFilterParameters(command, filters);
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read() || reader.IsDBNull(1))
+        {
+            return (null, null);
+        }
+
+        var dealId = reader.IsDBNull(0) ? null : reader.GetString(0);
+        var value = Convert.ToDecimal(reader.GetDouble(1));
+        return (value, dealId);
+    }
+
+    private static (decimal? Value, string? DealId) ComputeRankedMetric(SqliteConnection connection, DealFilters filters, QueryMetric metric, int rank)
+    {
+        var (expression, condition, aggregation) = DescribeMetric(metric);
+        if (aggregation is not (MetricAggregation.Min or MetricAggregation.Max))
+        {
+            throw new ArgumentOutOfRangeException(nameof(metric), metric, "Only Min/Max metrics can be ranked.");
+        }
+
+        var orderDirection = aggregation == MetricAggregation.Min ? "ASC" : "DESC";
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            WITH {BuildFilteredCte()}
+            SELECT DealId, {expression} AS MetricValue
+            FROM Filtered
+            WHERE {condition}
+            ORDER BY MetricValue {orderDirection}
+            LIMIT 1 OFFSET $offset;
+            """;
+        AddFilterParameters(command, filters);
+        command.Parameters.AddWithValue("$offset", rank - 1);
 
         using var reader = command.ExecuteReader();
         if (!reader.Read() || reader.IsDBNull(1))

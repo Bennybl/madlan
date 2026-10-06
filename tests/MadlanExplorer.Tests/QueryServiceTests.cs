@@ -52,6 +52,39 @@ public class QueryServiceTests
     }
 
     [Fact]
+    public void Query_passes_the_ranked_metrics_to_the_repository()
+    {
+        var repository = new FakeDealRepository();
+        var service = new QueryService(repository);
+
+        service.Query(new DealFilters(), rankedMetrics: [new RankedMetricRequest { Metric = QueryMetric.MaxPrice, Rank = 2 }]);
+
+        var ranked = Assert.Single(repository.ReceivedQuery?.RankedMetrics ?? []);
+        Assert.Equal(QueryMetric.MaxPrice, ranked.Metric);
+        Assert.Equal(2, ranked.Rank);
+    }
+
+    [Fact]
+    public void Query_rejects_a_ranked_metric_that_is_not_a_min_or_max_metric()
+    {
+        var repository = new FakeDealRepository();
+        var service = new QueryService(repository);
+
+        Assert.Throws<ArgumentException>(() => service.Query(new DealFilters(), rankedMetrics: [new RankedMetricRequest { Metric = QueryMetric.AveragePrice, Rank = 2 }]));
+        Assert.Null(repository.ReceivedQuery);
+    }
+
+    [Fact]
+    public void Query_rejects_an_out_of_range_rank()
+    {
+        var repository = new FakeDealRepository();
+        var service = new QueryService(repository);
+
+        Assert.Throws<ArgumentException>(() => service.Query(new DealFilters(), rankedMetrics: [new RankedMetricRequest { Metric = QueryMetric.MaxPrice, Rank = 0 }]));
+        Assert.Null(repository.ReceivedQuery);
+    }
+
+    [Fact]
     public void Query_rejects_invalid_floor_and_year_built_bounds()
     {
         var repository = new FakeDealRepository();

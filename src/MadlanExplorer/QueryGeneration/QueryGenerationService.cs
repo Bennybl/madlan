@@ -104,13 +104,35 @@ public class QueryGenerationService
             metrics.Add(parsedMetric);
         }
 
+        var rankedMetrics = new List<RankedMetricRequest>();
+        foreach (var spec in output.RankedMetrics ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(spec.Metric))
+            {
+                continue;
+            }
+
+            if (!Enum.TryParse(spec.Metric, ignoreCase: true, out QueryMetric parsedMetric) || !QueryMetrics.Rankable.Contains(parsedMetric))
+            {
+                throw new InvalidOperationException("The model returned an unsupported ranked metric.");
+            }
+
+            if (spec.Rank is < 1 or > 1000)
+            {
+                throw new InvalidOperationException("The model returned an out-of-range rank.");
+            }
+
+            rankedMetrics.Add(new RankedMetricRequest { Metric = parsedMetric, Rank = spec.Rank });
+        }
+
         return new AskResponse
         {
             Prompt = prompt,
             Status = "query",
             Message = output.Message,
             Filters = filters,
-            Metrics = metrics
+            Metrics = metrics,
+            RankedMetrics = rankedMetrics
         };
     }
 
@@ -142,6 +164,7 @@ public class QueryGenerationService
     {
         var currentIsraelDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Asia/Jerusalem")));
         var supportedMetrics = string.Join(", ", Enum.GetNames<QueryMetric>());
+        var rankableMetrics = string.Join(", ", QueryMetrics.Rankable.Select(metric => metric.ToString()));
         var propertyTypes = _dealRepository.GetDatasetFacts().PropertyTypes;
         var propertyTypesText = string.Join(", ", propertyTypes.Select(type => $"\"{type}\""));
 
@@ -156,12 +179,13 @@ public class QueryGenerationService
             $"Also choose one or more metrics describing what to compute over the matching transactions, each from this list only: {supportedMetrics}. " +
             "Choose every metric the question actually asks for -- a question asking for both the average and the median price needs both AveragePrice and MedianPrice; a question asking only \"how many\" needs no metric at all (TransactionCount is always computed anyway, so never include it). Do not add a metric the question did not ask for. " +
             "The cheapest or lowest-priced matching transaction means MinPrice; the most expensive means MaxPrice; the largest or smallest apartment means MaxSizeSqm or MinSizeSqm; a typical or average value means the matching Average* metric; a middle or median value means the matching Median* metric. Price-per-square-meter, room-count, floor, and year-built have the same Min/Max/Average/Median options. " +
+            $"Also choose zero or more ranked metrics for a question asking for the Nth highest or lowest value of something, such as \"the second most expensive\" or \"the third cheapest\" or \"the second largest\" -- a ranked metric is one of these exact names only: {rankableMetrics}, paired with a rank (a positive whole number: 1 means the single most extreme value, same as naming that plain metric directly; 2 means the next one; and so on). \"Most expensive\" alone is rank 1 of MaxPrice (use the plain metrics list above for that, not a ranked metric, unless the question also names a later one of a sequence, e.g. \"the most expensive and the second most expensive\" needs MaxPrice both as a plain metric with rank omitted and as a ranked metric with rank 2). Only Min/Max-style metrics can be ranked; Average, Median, and TransactionCount have no single Nth matching deal and must never appear as a ranked metric. " +
             "This system answers historical statistics over the supplied sample only, computed deterministically from these exact filters and this exact metric list; it never predicts a future price, appraises a specific named property, or computes anything outside this list. " +
             "A question asking for any of the statistics above, including one naming a specific past or current year, is supported and must produce outcome \"query\", never \"unsupported\". " +
             "Use outcome \"unsupported\" for requests this system cannot do at all: future price predictions, property valuations or appraisals, investment advice, a statistic outside the metric list above, or a question unrelated to this dataset as described above. " +
             "Use outcome \"clarification\" only when the question itself is genuinely ambiguous, such as a neighborhood name that could match more than one place, and explain in the message what additional detail is needed. " +
             $"The current date in Israel is {currentIsraelDate:yyyy-MM-dd}; resolve a relative date such as \"last year\" or \"this year\" against it. " +
-            "Return JSON with outcome (query, clarification, unsupported), message (a short Hebrew explanation, required whenever outcome is not query), filters (required only when outcome is query), and metrics (a JSON array of zero or more exact names from the list above; omit or leave empty when only the transaction count is needed). " +
+            "Return JSON with outcome (query, clarification, unsupported), message (a short Hebrew explanation, required whenever outcome is not query), filters (required only when outcome is query), metrics (a JSON array of zero or more exact names from the list above; omit or leave empty when only the transaction count is needed), and rankedMetrics (a JSON array of zero or more {\"metric\": name, \"rank\": N} objects as described above; omit or leave empty when no Nth-highest/lowest value was asked for). " +
             $"User prompt: {prompt}";
     }
 }

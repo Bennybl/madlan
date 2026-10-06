@@ -12,6 +12,8 @@ public class AskResponse
 
     public IReadOnlyList<QueryMetric>? Metrics { get; init; }
 
+    public IReadOnlyList<RankedMetricRequest>? RankedMetrics { get; init; }
+
     public DealQueryResult? Result { get; init; }
 
     public string? Summary { get; init; }

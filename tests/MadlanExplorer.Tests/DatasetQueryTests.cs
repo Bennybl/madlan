@@ -148,6 +148,34 @@ public class DatasetQueryTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public void Query_computes_the_second_highest_price_as_a_ranked_metric()
+    {
+        var filters = new DealFilters { City = "חולון" };
+
+        var topTwo = QueryRanked(filters, (QueryMetric.MaxPrice, 1), (QueryMetric.MaxPrice, 2));
+        var maxResult = Query(filters, QueryMetric.MaxPrice).RequestedMetrics[0];
+
+        Assert.Equal(2, topTwo.RankedMetrics.Count);
+        var first = Assert.Single(topTwo.RankedMetrics, r => r.Rank == 1);
+        var second = Assert.Single(topTwo.RankedMetrics, r => r.Rank == 2);
+        Assert.Equal(maxResult.Value, first.Value);
+        Assert.Equal(maxResult.DealId, first.DealId);
+        Assert.NotNull(second.Value);
+        Assert.True(second.Value <= first.Value);
+        Assert.NotEqual(first.DealId, second.DealId);
+    }
+
+    [Fact]
+    public void Query_returns_a_null_ranked_metric_when_the_rank_exceeds_the_matching_deals()
+    {
+        var result = QueryRanked(new DealFilters { City = "חולון" }, (QueryMetric.MaxPrice, 500));
+
+        var ranked = Assert.Single(result.RankedMetrics);
+        Assert.Null(ranked.Value);
+        Assert.Null(ranked.DealId);
+    }
+
+    [Fact]
     public void Query_filters_by_boolean_amenity_columns()
     {
         var withElevator = Query(new DealFilters { HasElevator = true });
@@ -164,5 +192,12 @@ public class DatasetQueryTests : IClassFixture<WebApplicationFactory<Program>>
     {
         using var scope = _factory.Services.CreateScope();
         return scope.ServiceProvider.GetRequiredService<QueryService>().Query(filters, metrics);
+    }
+
+    private DealQueryResult QueryRanked(DealFilters filters, params (QueryMetric Metric, int Rank)[] rankedMetrics)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var requests = rankedMetrics.Select(r => new RankedMetricRequest { Metric = r.Metric, Rank = r.Rank }).ToList();
+        return scope.ServiceProvider.GetRequiredService<QueryService>().Query(filters, rankedMetrics: requests);
     }
 }

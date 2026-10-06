@@ -68,6 +68,29 @@ public class QueryGenerationServiceTests
     }
 
     [Fact]
+    public async Task Generate_returns_a_ranked_metric_for_an_nth_highest_question()
+    {
+        var provider = new FakeLlmProvider { Content = """{"outcome":"query","filters":{},"rankedMetrics":[{"metric":"MaxPrice","rank":2}]}""" };
+        var service = CreateService(provider);
+
+        var response = await service.GenerateAsync("מה הדירה השנייה הכי יקרה?", CancellationToken.None);
+
+        Assert.Equal("query", response.Status);
+        var ranked = Assert.Single(response.RankedMetrics ?? []);
+        Assert.Equal(QueryMetric.MaxPrice, ranked.Metric);
+        Assert.Equal(2, ranked.Rank);
+    }
+
+    [Fact]
+    public async Task Generate_rejects_a_ranked_metric_that_is_not_a_min_or_max_metric()
+    {
+        var provider = new FakeLlmProvider { Content = """{"outcome":"query","filters":{},"rankedMetrics":[{"metric":"AveragePrice","rank":2}]}""" };
+        var service = CreateService(provider);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.GenerateAsync("test", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Generate_rejects_an_unsupported_metric_name()
     {
         var provider = new FakeLlmProvider { Content = """{"outcome":"query","filters":{},"metrics":["NotARealMetric"]}""" };

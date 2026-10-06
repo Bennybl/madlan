@@ -60,6 +60,25 @@ public class ResultSummaryServiceTests
     }
 
     [Fact]
+    public async Task Summarize_mentions_ranked_metrics_in_the_evidence_sent_to_the_model()
+    {
+        var provider = new FakeLlmProvider();
+        provider.SetContent(LlmStage.ResultSummary, """{"summary":"הדירה השנייה הכי יקרה היא D100190.","referencedDealIds":["D100190"]}""");
+        var service = CreateService(provider);
+        var result = new DealQueryResult
+        {
+            TransactionCount = 5,
+            RankedMetrics = [new RankedMetricResult { Metric = QueryMetric.MaxPrice, Rank = 2, Value = 5_000_000m, DealId = "D100190" }]
+        };
+
+        await service.SummarizeAsync("שאלה", new DealFilters(), "hash-abc123", result, CancellationToken.None);
+
+        var sentPrompt = provider.Request!.Prompt;
+        Assert.Contains("\"rank\":2", sentPrompt);
+        Assert.Contains("D100190", sentPrompt);
+    }
+
+    [Fact]
     public async Task Summarize_allows_empty_references_for_an_empty_result()
     {
         var provider = new FakeLlmProvider();

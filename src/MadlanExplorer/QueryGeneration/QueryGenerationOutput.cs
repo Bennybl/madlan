@@ -9,4 +9,6 @@ public class QueryGenerationOutput
     public DealFilters? Filters { get; init; }
 
     public IReadOnlyList<string>? Metrics { get; init; }
+
+    public IReadOnlyList<RankedMetricSpec>? RankedMetrics { get; init; }
 }

@@ -25,4 +25,6 @@ public class DealQueryResult
     public IReadOnlyList<string> Warnings { get; init; } = [];
 
     public IReadOnlyList<RequestedMetricResult> RequestedMetrics { get; init; } = [];
+
+    public IReadOnlyList<RankedMetricResult> RankedMetrics { get; init; } = [];
 }

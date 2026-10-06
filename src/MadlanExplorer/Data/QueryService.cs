@@ -9,13 +9,31 @@ public class QueryService
         _dealRepository = dealRepository;
     }
 
-    public DealQueryResult Query(DealFilters filters, IReadOnlyList<QueryMetric>? metrics = null)
+    public DealQueryResult Query(DealFilters filters, IReadOnlyList<QueryMetric>? metrics = null, IReadOnlyList<RankedMetricRequest>? rankedMetrics = null)
     {
         ValidateFilters(filters);
-        return _dealRepository.Execute(new DealQuery { Filters = filters, Metrics = metrics ?? [] });
+        var ranked = rankedMetrics ?? [];
+        ValidateRankedMetrics(ranked);
+        return _dealRepository.Execute(new DealQuery { Filters = filters, Metrics = metrics ?? [], RankedMetrics = ranked });
     }
 
     public void Validate(DealFilters filters) => ValidateFilters(filters);
+
+    private static void ValidateRankedMetrics(IReadOnlyList<RankedMetricRequest> rankedMetrics)
+    {
+        foreach (var request in rankedMetrics)
+        {
+            if (!QueryMetrics.Rankable.Contains(request.Metric))
+            {
+                throw new ArgumentException($"{request.Metric} cannot be ranked; only Min/Max metrics support a rank.", nameof(rankedMetrics));
+            }
+
+            if (request.Rank is < 1 or > 1000)
+            {
+                throw new ArgumentException("Rank must be between 1 and 1000.", nameof(rankedMetrics));
+            }
+        }
+    }
 
     private static void ValidateFilters(DealFilters filters)
     {

@@ -25,7 +25,8 @@ public static class CalculatedEvidence
             hasMoreEvidence = result.HasMoreEvidence,
             exclusionReasons = result.ExclusionReasons,
             warnings = result.Warnings,
-            requestedMetrics = result.RequestedMetrics.Select(m => new { metric = m.Metric, value = m.Value, dealId = m.DealId })
+            requestedMetrics = result.RequestedMetrics.Select(m => new { metric = m.Metric, value = m.Value, dealId = m.DealId }),
+            rankedMetrics = result.RankedMetrics.Select(m => new { metric = m.Metric, rank = m.Rank, value = m.Value, dealId = m.DealId })
         };
 
         return JsonSerializer.Serialize(evidence, SerializerOptions);
@@ -44,6 +45,14 @@ public static class CalculatedEvidence
             if (metricResult.DealId is not null)
             {
                 dealIds.Add(metricResult.DealId);
+            }
+        }
+
+        foreach (var rankedResult in result.RankedMetrics)
+        {
+            if (rankedResult.DealId is not null)
+            {
+                dealIds.Add(rankedResult.DealId);
             }
         }
 
