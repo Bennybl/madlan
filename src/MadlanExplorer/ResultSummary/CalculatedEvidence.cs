@@ -26,7 +26,15 @@ public static class CalculatedEvidence
             exclusionReasons = result.ExclusionReasons,
             warnings = result.Warnings,
             requestedMetrics = result.RequestedMetrics.Select(m => new { metric = m.Metric, value = m.Value, dealId = m.DealId }),
-            rankedMetrics = result.RankedMetrics.Select(m => new { metric = m.Metric, rank = m.Rank, value = m.Value, dealId = m.DealId })
+            rankedMetrics = result.RankedMetrics.Select(m => new { metric = m.Metric, rank = m.Rank, value = m.Value, dealId = m.DealId }),
+            groupBy = result.GroupBy,
+            groups = result.Groups.Select(g => new
+            {
+                groupValue = g.GroupValue,
+                transactionCount = g.TransactionCount,
+                requestedMetrics = g.RequestedMetrics.Select(m => new { metric = m.Metric, value = m.Value, dealId = m.DealId }),
+                rankedMetrics = g.RankedMetrics.Select(m => new { metric = m.Metric, rank = m.Rank, value = m.Value, dealId = m.DealId })
+            })
         };
 
         return JsonSerializer.Serialize(evidence, SerializerOptions);
@@ -53,6 +61,25 @@ public static class CalculatedEvidence
             if (rankedResult.DealId is not null)
             {
                 dealIds.Add(rankedResult.DealId);
+            }
+        }
+
+        foreach (var group in result.Groups)
+        {
+            foreach (var metricResult in group.RequestedMetrics)
+            {
+                if (metricResult.DealId is not null)
+                {
+                    dealIds.Add(metricResult.DealId);
+                }
+            }
+
+            foreach (var rankedResult in group.RankedMetrics)
+            {
+                if (rankedResult.DealId is not null)
+                {
+                    dealIds.Add(rankedResult.DealId);
+                }
             }
         }
 

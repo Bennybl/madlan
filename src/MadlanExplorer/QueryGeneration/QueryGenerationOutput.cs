@@ -11,4 +11,6 @@ public class QueryGenerationOutput
     public IReadOnlyList<string>? Metrics { get; init; }
 
     public IReadOnlyList<RankedMetricSpec>? RankedMetrics { get; init; }
+
+    public string? GroupBy { get; init; }
 }

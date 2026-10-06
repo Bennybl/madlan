@@ -176,6 +176,38 @@ public class DatasetQueryTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public void Query_computes_the_cheapest_deal_per_city_when_grouped()
+    {
+        var result = QueryGrouped(new DealFilters(), GroupByField.City, rankedMetrics: [(QueryMetric.MinPrice, 1)]);
+
+        Assert.NotEmpty(result.Groups);
+        Assert.Equal(GroupByField.City, result.GroupBy);
+
+        var holon = Assert.Single(result.Groups, g => g.GroupValue == "חולון");
+        Assert.True(holon.TransactionCount > 0);
+        var cheapest = Assert.Single(holon.RankedMetrics);
+        Assert.Equal(QueryMetric.MinPrice, cheapest.Metric);
+        Assert.NotNull(cheapest.Value);
+        Assert.NotNull(cheapest.DealId);
+
+        var ungroupedHolon = Query(new DealFilters { City = "חולון" }, QueryMetric.MinPrice).RequestedMetrics[0];
+        Assert.Equal(ungroupedHolon.Value, cheapest.Value);
+        Assert.Equal(ungroupedHolon.DealId, cheapest.DealId);
+    }
+
+    [Fact]
+    public void Query_group_by_respects_an_additional_filter()
+    {
+        var result = QueryGrouped(new DealFilters { PropertyType = "דירה" }, GroupByField.City, metrics: [QueryMetric.AveragePrice]);
+
+        Assert.NotEmpty(result.Groups);
+        foreach (var group in result.Groups)
+        {
+            Assert.True(group.TransactionCount > 0);
+        }
+    }
+
+    [Fact]
     public void Query_filters_by_boolean_amenity_columns()
     {
         var withElevator = Query(new DealFilters { HasElevator = true });
@@ -199,5 +231,16 @@ public class DatasetQueryTests : IClassFixture<WebApplicationFactory<Program>>
         using var scope = _factory.Services.CreateScope();
         var requests = rankedMetrics.Select(r => new RankedMetricRequest { Metric = r.Metric, Rank = r.Rank }).ToList();
         return scope.ServiceProvider.GetRequiredService<QueryService>().Query(filters, rankedMetrics: requests);
+    }
+
+    private DealQueryResult QueryGrouped(
+        DealFilters filters,
+        GroupByField groupBy,
+        QueryMetric[]? metrics = null,
+        (QueryMetric Metric, int Rank)[]? rankedMetrics = null)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var requests = (rankedMetrics ?? []).Select(r => new RankedMetricRequest { Metric = r.Metric, Rank = r.Rank }).ToList();
+        return scope.ServiceProvider.GetRequiredService<QueryService>().Query(filters, metrics ?? [], requests, groupBy);
     }
 }

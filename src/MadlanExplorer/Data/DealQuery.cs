@@ -9,4 +9,6 @@ public class DealQuery
     public IReadOnlyList<QueryMetric> Metrics { get; init; } = [];
 
     public IReadOnlyList<RankedMetricRequest> RankedMetrics { get; init; } = [];
+
+    public GroupByField? GroupBy { get; init; }
 }

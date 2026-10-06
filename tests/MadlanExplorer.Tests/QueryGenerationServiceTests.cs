@@ -91,6 +91,27 @@ public class QueryGenerationServiceTests
     }
 
     [Fact]
+    public async Task Generate_returns_a_group_by_field_for_a_per_category_breakdown_question()
+    {
+        var provider = new FakeLlmProvider { Content = """{"outcome":"query","filters":{},"rankedMetrics":[{"metric":"MinPrice","rank":1}],"groupBy":"City"}""" };
+        var service = CreateService(provider);
+
+        var response = await service.GenerateAsync("מה הדירה הזולה ביותר בכל עיר?", CancellationToken.None);
+
+        Assert.Equal("query", response.Status);
+        Assert.Equal(GroupByField.City, response.GroupBy);
+    }
+
+    [Fact]
+    public async Task Generate_rejects_an_unsupported_group_by_field()
+    {
+        var provider = new FakeLlmProvider { Content = """{"outcome":"query","filters":{},"groupBy":"NotAField"}""" };
+        var service = CreateService(provider);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.GenerateAsync("test", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Generate_rejects_an_unsupported_metric_name()
     {
         var provider = new FakeLlmProvider { Content = """{"outcome":"query","filters":{},"metrics":["NotARealMetric"]}""" };

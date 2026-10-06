@@ -83,7 +83,8 @@ public class MadlanApplicationService
 
         var metrics = generated.Metrics ?? [];
         var rankedMetrics = generated.RankedMetrics ?? [];
-        var verification = await _queryVerificationService.VerifyAsync(prompt, generated.Filters, metrics, rankedMetrics, workflowToken);
+        var groupBy = generated.GroupBy;
+        var verification = await _queryVerificationService.VerifyAsync(prompt, generated.Filters, metrics, rankedMetrics, groupBy, workflowToken);
         if (verification.Outcome != "approved")
         {
             return new AskResponse
@@ -95,7 +96,7 @@ public class MadlanApplicationService
         }
 
         var filters = generated.Filters;
-        var result = _queryService.Query(filters, metrics, rankedMetrics);
+        var result = _queryService.Query(filters, metrics, rankedMetrics, groupBy);
         var datasetHash = _datasetMetadataProvider.Metadata.FileHash;
 
         string? summary = null;
@@ -126,6 +127,7 @@ public class MadlanApplicationService
             Filters = filters,
             Metrics = metrics,
             RankedMetrics = rankedMetrics,
+            GroupBy = groupBy,
             Result = result,
             DatasetHash = datasetHash,
             Summary = summary,

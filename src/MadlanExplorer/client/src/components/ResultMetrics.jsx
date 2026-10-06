@@ -1,4 +1,4 @@
-import { NUMBER_FORMAT, formatCurrency, formatMetricValue, METRIC_LABELS, SINGLE_DEAL_METRICS, describeWarning, describeRankedMetric } from "../format.js";
+import { NUMBER_FORMAT, formatCurrency, formatMetricValue, METRIC_LABELS, SINGLE_DEAL_METRICS, describeWarning, describeRankedMetric, GROUP_BY_LABELS } from "../format.js";
 import DealDetailCard from "./DealDetailCard.jsx";
 import EvidenceTable from "./EvidenceTable.jsx";
 
@@ -11,6 +11,7 @@ export default function ResultMetrics({ result }) {
 
   const requestedMetrics = result.requestedMetrics || [];
   const rankedMetrics = result.rankedMetrics || [];
+  const groups = result.groups || [];
   const singleDealMetrics = requestedMetrics.filter((m) => SINGLE_DEAL_METRICS.has(m.metric) && m.dealId);
 
   return (
@@ -61,6 +62,32 @@ export default function ResultMetrics({ result }) {
               <DealDetailCard dealId={rankedResult.dealId} />
             </div>
           ))}
+        </div>
+      )}
+
+      {result.groupBy && groups.length > 0 && (
+        <div className="grouped-results">
+          <h4>פילוח לפי {GROUP_BY_LABELS[result.groupBy] || result.groupBy}</h4>
+          <div className="grouped-results-list">
+            {groups.map((group) => (
+              <article className="group-card" key={group.groupValue}>
+                <h5>{group.groupValue}</h5>
+                <p className="metric-count">{NUMBER_FORMAT.format(group.transactionCount)} עסקאות</p>
+                {(group.requestedMetrics || []).map((metricResult) => (
+                  <p key={metricResult.metric} className="group-metric-line">
+                    {METRIC_LABELS[metricResult.metric] || metricResult.metric}: {formatMetricValue(metricResult.metric, metricResult.value)}
+                    {metricResult.dealId && ` (עסקה: ${metricResult.dealId})`}
+                  </p>
+                ))}
+                {(group.rankedMetrics || []).map((rankedResult) => (
+                  <p key={`${rankedResult.metric}-${rankedResult.rank}`} className="group-metric-line">
+                    {describeRankedMetric(rankedResult.metric, rankedResult.rank)}: {formatMetricValue(rankedResult.metric, rankedResult.value)}
+                    {rankedResult.dealId && ` (עסקה: ${rankedResult.dealId})`}
+                  </p>
+                ))}
+              </article>
+            ))}
+          </div>
         </div>
       )}
 

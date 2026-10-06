@@ -14,6 +14,8 @@ public class AskResponse
 
     public IReadOnlyList<RankedMetricRequest>? RankedMetrics { get; init; }
 
+    public GroupByField? GroupBy { get; init; }
+
     public DealQueryResult? Result { get; init; }
 
     public string? Summary { get; init; }

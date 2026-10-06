@@ -113,6 +113,10 @@ public class SqliteDealRepository : IDealRepository
             rankedMetrics.Add(new RankedMetricResult { Metric = request.Metric, Rank = request.Rank, Value = value, DealId = dealId });
         }
 
+        var groups = query.GroupBy is { } groupByField
+            ? ComputeGroups(connection, filters, groupByField, query.Metrics, query.RankedMetrics)
+            : [];
+
         return new DealQueryResult
         {
             TransactionCount = transactionCount,
@@ -126,7 +130,9 @@ public class SqliteDealRepository : IDealRepository
             HasMoreEvidence = evidence.HasMore,
             Warnings = warnings,
             RequestedMetrics = requestedMetrics,
-            RankedMetrics = rankedMetrics
+            RankedMetrics = rankedMetrics,
+            GroupBy = query.GroupBy,
+            Groups = groups
         };
     }
 
@@ -222,7 +228,7 @@ public class SqliteDealRepository : IDealRepository
     {
         return $"""
             Filtered AS (
-                SELECT DealId, PriceNis, SizeSqm, Rooms, Floor, YearBuilt, SuppliedPricePerSqm
+                SELECT DealId, City, Neighborhood, PropertyType, Condition, Source, PriceNis, SizeSqm, Rooms, Floor, YearBuilt, SuppliedPricePerSqm
                 FROM Deals
                 WHERE {FilterPredicate}
             )
@@ -313,6 +319,181 @@ public class SqliteDealRepository : IDealRepository
         var dealId = reader.IsDBNull(0) ? null : reader.GetString(0);
         var value = Convert.ToDecimal(reader.GetDouble(1));
         return (value, dealId);
+    }
+
+    private const int MaxGroups = 200;
+
+    private static IReadOnlyList<GroupedQueryResult> ComputeGroups(
+        SqliteConnection connection,
+        DealFilters filters,
+        GroupByField groupBy,
+        IReadOnlyList<QueryMetric> metrics,
+        IReadOnlyList<RankedMetricRequest> rankedMetrics)
+    {
+        var column = DescribeGroupByColumn(groupBy);
+        var groups = new Dictionary<string, GroupBuilder>();
+        var order = new List<string>();
+
+        GroupBuilder EnsureGroup(string key)
+        {
+            if (!groups.TryGetValue(key, out var builder))
+            {
+                builder = new GroupBuilder { GroupValue = key };
+                groups[key] = builder;
+                order.Add(key);
+            }
+
+            return builder;
+        }
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = $"""
+                WITH {BuildFilteredCte()}
+                SELECT {column} AS GroupValue, COUNT(*) AS Cnt
+                FROM Filtered
+                WHERE {column} IS NOT NULL
+                GROUP BY {column}
+                ORDER BY {column}
+                LIMIT {MaxGroups};
+                """;
+            AddFilterParameters(command, filters);
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var key = Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture) ?? "";
+                EnsureGroup(key).TransactionCount = reader.GetInt32(1);
+            }
+        }
+
+        foreach (var metric in metrics.Distinct())
+        {
+            if (metric == QueryMetric.TransactionCount)
+            {
+                continue;
+            }
+
+            foreach (var (key, value, dealId) in ComputeMetricByGroup(connection, filters, column, metric, rank: 1))
+            {
+                EnsureGroup(key).RequestedMetrics.Add(new RequestedMetricResult { Metric = metric, Value = value, DealId = dealId });
+            }
+        }
+
+        foreach (var request in rankedMetrics)
+        {
+            foreach (var (key, value, dealId) in ComputeMetricByGroup(connection, filters, column, request.Metric, request.Rank))
+            {
+                EnsureGroup(key).RankedMetrics.Add(new RankedMetricResult { Metric = request.Metric, Rank = request.Rank, Value = value, DealId = dealId });
+            }
+        }
+
+        return order.Select(key => groups[key].Build()).ToList();
+    }
+
+    private static List<(string GroupValue, decimal? Value, string? DealId)> ComputeMetricByGroup(
+        SqliteConnection connection, DealFilters filters, string groupColumn, QueryMetric metric, int rank)
+    {
+        var (expression, condition, aggregation) = DescribeMetric(metric);
+        using var command = connection.CreateCommand();
+
+        if (aggregation is MetricAggregation.Min or MetricAggregation.Max)
+        {
+            var orderDirection = aggregation == MetricAggregation.Min ? "ASC" : "DESC";
+            command.CommandText = $"""
+                WITH {BuildFilteredCte()},
+                RankedInGroup AS (
+                    SELECT DealId, {groupColumn} AS GroupValue, {expression} AS MetricValue,
+                           ROW_NUMBER() OVER (PARTITION BY {groupColumn} ORDER BY {expression} {orderDirection}) AS Position
+                    FROM Filtered
+                    WHERE {condition} AND {groupColumn} IS NOT NULL
+                )
+                SELECT GroupValue, DealId, MetricValue
+                FROM RankedInGroup
+                WHERE Position = $rank
+                ORDER BY GroupValue
+                LIMIT {MaxGroups};
+                """;
+            command.Parameters.AddWithValue("$rank", rank);
+        }
+        else if (aggregation == MetricAggregation.Average)
+        {
+            command.CommandText = $"""
+                WITH {BuildFilteredCte()}
+                SELECT {groupColumn} AS GroupValue, NULL AS DealId, AVG({expression}) AS MetricValue
+                FROM Filtered
+                WHERE {condition} AND {groupColumn} IS NOT NULL
+                GROUP BY {groupColumn}
+                ORDER BY {groupColumn}
+                LIMIT {MaxGroups};
+                """;
+        }
+        else
+        {
+            command.CommandText = $"""
+                WITH {BuildFilteredCte()},
+                Ranked AS (
+                    SELECT {groupColumn} AS GroupValue, {expression} AS Value,
+                           ROW_NUMBER() OVER (PARTITION BY {groupColumn} ORDER BY {expression}) AS Position,
+                           COUNT(*) OVER (PARTITION BY {groupColumn}) AS Total
+                    FROM Filtered
+                    WHERE {condition} AND {groupColumn} IS NOT NULL
+                )
+                SELECT GroupValue, NULL AS DealId, AVG(Value) AS MetricValue
+                FROM Ranked
+                WHERE Position IN ((Total + 1) / 2, (Total + 2) / 2)
+                GROUP BY GroupValue
+                ORDER BY GroupValue
+                LIMIT {MaxGroups};
+                """;
+        }
+
+        AddFilterParameters(command, filters);
+        using var reader = command.ExecuteReader();
+        var results = new List<(string, decimal?, string?)>();
+        while (reader.Read())
+        {
+            var key = Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture) ?? "";
+            var dealId = reader.IsDBNull(1) ? null : reader.GetString(1);
+            var value = reader.IsDBNull(2) ? (decimal?)null : Convert.ToDecimal(reader.GetDouble(2));
+            results.Add((key, value, dealId));
+        }
+
+        return results;
+    }
+
+    private static string DescribeGroupByColumn(GroupByField field)
+    {
+        return field switch
+        {
+            GroupByField.City => "City",
+            GroupByField.Neighborhood => "Neighborhood",
+            GroupByField.PropertyType => "PropertyType",
+            GroupByField.Condition => "Condition",
+            GroupByField.Source => "Source",
+            GroupByField.Rooms => "Rooms",
+            GroupByField.Floor => "Floor",
+            GroupByField.YearBuilt => "YearBuilt",
+            _ => throw new ArgumentOutOfRangeException(nameof(field), field, "Unsupported group-by field.")
+        };
+    }
+
+    private class GroupBuilder
+    {
+        public string GroupValue { get; init; } = string.Empty;
+        public int TransactionCount { get; set; }
+        public List<RequestedMetricResult> RequestedMetrics { get; } = [];
+        public List<RankedMetricResult> RankedMetrics { get; } = [];
+
+        public GroupedQueryResult Build()
+        {
+            return new GroupedQueryResult
+            {
+                GroupValue = GroupValue,
+                TransactionCount = TransactionCount,
+                RequestedMetrics = RequestedMetrics,
+                RankedMetrics = RankedMetrics
+            };
+        }
     }
 
     private enum MetricAggregation { Min, Max, Average, Median }

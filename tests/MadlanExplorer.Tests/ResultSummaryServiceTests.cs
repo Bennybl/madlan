@@ -79,6 +79,36 @@ public class ResultSummaryServiceTests
     }
 
     [Fact]
+    public async Task Summarize_includes_groups_in_the_evidence_sent_to_the_model()
+    {
+        var provider = new FakeLlmProvider();
+        provider.SetContent(LlmStage.ResultSummary, """{"summary":"בחולון 7 עסקאות, בתל אביב 3.","referencedDealIds":["D1"]}""");
+        var service = CreateService(provider);
+        var result = new DealQueryResult
+        {
+            TransactionCount = 10,
+            GroupBy = GroupByField.City,
+            Groups =
+            [
+                new GroupedQueryResult
+                {
+                    GroupValue = "חולון",
+                    TransactionCount = 7,
+                    RankedMetrics = [new RankedMetricResult { Metric = QueryMetric.MinPrice, Rank = 1, Value = 1000m, DealId = "D1" }]
+                },
+                new GroupedQueryResult { GroupValue = "תל אביב", TransactionCount = 3 }
+            ]
+        };
+
+        await service.SummarizeAsync("שאלה", new DealFilters(), "hash-abc123", result, CancellationToken.None);
+
+        var sentPrompt = provider.Request!.Prompt;
+        Assert.Contains("\"groupValue\"", sentPrompt);
+        Assert.Contains("\"transactionCount\":7", sentPrompt);
+        Assert.Contains("\"transactionCount\":3", sentPrompt);
+    }
+
+    [Fact]
     public async Task Summarize_allows_empty_references_for_an_empty_result()
     {
         var provider = new FakeLlmProvider();

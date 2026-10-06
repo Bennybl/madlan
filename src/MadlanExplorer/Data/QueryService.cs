@@ -9,12 +9,16 @@ public class QueryService
         _dealRepository = dealRepository;
     }
 
-    public DealQueryResult Query(DealFilters filters, IReadOnlyList<QueryMetric>? metrics = null, IReadOnlyList<RankedMetricRequest>? rankedMetrics = null)
+    public DealQueryResult Query(
+        DealFilters filters,
+        IReadOnlyList<QueryMetric>? metrics = null,
+        IReadOnlyList<RankedMetricRequest>? rankedMetrics = null,
+        GroupByField? groupBy = null)
     {
         ValidateFilters(filters);
         var ranked = rankedMetrics ?? [];
         ValidateRankedMetrics(ranked);
-        return _dealRepository.Execute(new DealQuery { Filters = filters, Metrics = metrics ?? [], RankedMetrics = ranked });
+        return _dealRepository.Execute(new DealQuery { Filters = filters, Metrics = metrics ?? [], RankedMetrics = ranked, GroupBy = groupBy });
     }
 
     public void Validate(DealFilters filters) => ValidateFilters(filters);

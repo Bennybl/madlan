@@ -27,4 +27,8 @@ public class DealQueryResult
     public IReadOnlyList<RequestedMetricResult> RequestedMetrics { get; init; } = [];
 
     public IReadOnlyList<RankedMetricResult> RankedMetrics { get; init; } = [];
+
+    public GroupByField? GroupBy { get; init; }
+
+    public IReadOnlyList<GroupedQueryResult> Groups { get; init; } = [];
 }

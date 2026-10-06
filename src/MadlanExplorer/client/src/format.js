@@ -127,6 +127,17 @@ export function describeLocalityMethod(method) {
   }
 }
 
+export const GROUP_BY_LABELS = {
+  City: "עיר",
+  Neighborhood: "שכונה",
+  PropertyType: "סוג נכס",
+  Condition: "מצב",
+  Source: "מקור",
+  Rooms: "מספר חדרים",
+  Floor: "קומה",
+  YearBuilt: "שנת בנייה"
+};
+
 export function formatDealDate(normalized) {
   if (!normalized.DealDateStart) return "לא דווח";
   if (normalized.DealDatePrecision === "month") {

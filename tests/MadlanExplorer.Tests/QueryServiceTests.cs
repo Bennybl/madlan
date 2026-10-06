@@ -85,6 +85,17 @@ public class QueryServiceTests
     }
 
     [Fact]
+    public void Query_passes_the_group_by_field_to_the_repository()
+    {
+        var repository = new FakeDealRepository();
+        var service = new QueryService(repository);
+
+        service.Query(new DealFilters(), groupBy: GroupByField.City);
+
+        Assert.Equal(GroupByField.City, repository.ReceivedQuery?.GroupBy);
+    }
+
+    [Fact]
     public void Query_rejects_invalid_floor_and_year_built_bounds()
     {
         var repository = new FakeDealRepository();
