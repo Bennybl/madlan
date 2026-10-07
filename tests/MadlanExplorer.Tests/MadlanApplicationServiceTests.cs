@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MadlanExplorer;
 using Xunit;
@@ -164,7 +165,7 @@ public class MadlanApplicationServiceTests
 
         var messages = Options.Create(new MessagesOptions { SummaryUnavailable = "summary-unavailable-message" });
         var queryService = new QueryService(repository);
-        var orchestrationService = new QueryOrchestrationService(provider, options, queryService, repository, TestLocalityCatalog.CreateLoaded());
+        var orchestrationService = new QueryOrchestrationService(provider, options, queryService, repository, TestLocalityCatalog.CreateLoaded(), NullLogger<QueryOrchestrationService>.Instance);
 
         return new MadlanApplicationService(
             orchestrationService,

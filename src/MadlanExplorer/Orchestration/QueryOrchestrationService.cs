@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace MadlanExplorer;
@@ -28,19 +29,22 @@ public class QueryOrchestrationService
     private readonly QueryService _queryService;
     private readonly IDealRepository _dealRepository;
     private readonly IsraeliLocalityCatalog _localityCatalog;
+    private readonly ILogger<QueryOrchestrationService> _logger;
 
     public QueryOrchestrationService(
         ILlmProvider provider,
         IOptions<LlmOptions> options,
         QueryService queryService,
         IDealRepository dealRepository,
-        IsraeliLocalityCatalog localityCatalog)
+        IsraeliLocalityCatalog localityCatalog,
+        ILogger<QueryOrchestrationService> logger)
     {
         _provider = provider;
         _options = options.Value;
         _queryService = queryService;
         _dealRepository = dealRepository;
         _localityCatalog = localityCatalog;
+        _logger = logger;
     }
 
     public async Task<OrchestrationResult> RunAsync(string prompt, CancellationToken cancellationToken)
@@ -76,6 +80,7 @@ public class QueryOrchestrationService
                 // A single malformed/unparseable response from one iteration should not crash the
                 // whole request when steps gathered so far are still real, useful, computed data --
                 // show them plainly rather than failing the entire question outright.
+                _logger.LogWarning(ex, "Agent model call/parse failed at iteration {Iteration} with {StepCount} steps already gathered.", iteration, steps.Count);
                 return BuildFallbackResult(steps, "התרחשה שגיאה בעיבוד השאלה. מוצגות התוצאות שחושבו עד כה.");
             }
 
@@ -92,6 +97,7 @@ public class QueryOrchestrationService
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                     {
+                        _logger.LogWarning(ex, "Query execution failed at iteration {Iteration} with {StepCount} steps already gathered. Requested action: {Action}", iteration, steps.Count, JsonSerializer.Serialize(action, SerializerOptions));
                         return BuildFallbackResult(steps, "התרחשה שגיאה בעיבוד השאלה. מוצגות התוצאות שחושבו עד כה.");
                     }
 
@@ -109,6 +115,7 @@ public class QueryOrchestrationService
                         // A missing summary or a reference to a deal ID never actually returned by any
                         // gathered query is a hard, non-negotiable grounding failure -- show the real
                         // data with no narrative at all rather than risk a fabricated claim.
+                        _logger.LogWarning("Final answer rejected by the deterministic grounding gate at iteration {Iteration}: candidate null = {CandidateIsNull}, referenced deal ids = {ReferencedDealIds}.", iteration, candidate is null, string.Join(",", referencedDealIds));
                         return BuildFallbackResult(steps, "סיכום מאומת אינו זמין כעת. מוצגות התוצאות המחושבות בלבד.");
                     }
 
@@ -117,9 +124,14 @@ public class QueryOrchestrationService
                     {
                         var (approved, verificationMessage) = await VerifyFinalAnswerAsync(prompt, steps, candidate, cancellationToken);
                         verificationNote = approved ? null : verificationMessage ?? "הסיכום לא עבר אימות מלא; ייתכן שאינו משקף את הנתונים בצורה מלאה.";
+                        if (!approved)
+                        {
+                            _logger.LogWarning("Final answer verification rejected: {VerificationMessage}", verificationMessage);
+                        }
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                     {
+                        _logger.LogWarning(ex, "Final answer verification call failed.");
                         verificationNote = "לא ניתן היה לאמת את הסיכום באופן מלא.";
                     }
 

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MadlanExplorer;
 using Xunit;
@@ -213,7 +214,7 @@ public class QueryOrchestrationServiceTests
         var provider = new FakeLlmProvider();
         var repository = new FakeDealRepository();
         var options = Options.Create(new LlmOptions());
-        var service = new QueryOrchestrationService(provider, options, new QueryService(repository), repository, TestLocalityCatalog.CreateLoaded());
+        var service = new QueryOrchestrationService(provider, options, new QueryService(repository), repository, TestLocalityCatalog.CreateLoaded(), NullLogger<QueryOrchestrationService>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.RunAsync("test", CancellationToken.None));
         Assert.Empty(provider.Requests);
@@ -245,6 +246,6 @@ public class QueryOrchestrationServiceTests
             Models = new LlmModelsOptions { Agent = "grok-agent-model", Verification = "grok-verification-model" }
         });
 
-        return new QueryOrchestrationService(provider, options, new QueryService(repository), repository, TestLocalityCatalog.CreateLoaded());
+        return new QueryOrchestrationService(provider, options, new QueryService(repository), repository, TestLocalityCatalog.CreateLoaded(), NullLogger<QueryOrchestrationService>.Instance);
     }
 }
