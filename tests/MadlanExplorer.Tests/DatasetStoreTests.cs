@@ -1,6 +1,4 @@
 using System.Text.Json;
-using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using MadlanExplorer;
 using Xunit;
@@ -190,23 +188,6 @@ public class DatasetStoreTests
 
         var normalizedJson = (string)command.ExecuteScalar()!;
         return JsonSerializer.Deserialize<NormalizedDealReport>(normalizedJson)!;
-    }
-
-    private class TestHostEnvironment : IHostEnvironment
-    {
-        public TestHostEnvironment(string contentRootPath)
-        {
-            ContentRootPath = contentRootPath;
-            ContentRootFileProvider = new PhysicalFileProvider(contentRootPath);
-        }
-
-        public string EnvironmentName { get; set; } = "Test";
-
-        public string ApplicationName { get; set; } = "MadlanExplorer.Tests";
-
-        public string ContentRootPath { get; set; }
-
-        public IFileProvider ContentRootFileProvider { get; set; }
     }
 
     private record DealOutcome(string DealId, string ConflictStatus, long ReportCount, long DistinctReportCount);

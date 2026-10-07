@@ -4,16 +4,24 @@ A Hebrew RTL application for exploring the supplied Madlan property-deal sample.
 
 ## Run locally
 
-The project targets .NET 10. Install the .NET 10 SDK, then run:
+The backend targets .NET 10; the UI is a React app built with Vite under `src/MadlanExplorer/client`. Install the .NET 10 SDK and Node 20+, then run:
 
 ```powershell
+cd src/MadlanExplorer/client
+npm install
+npm run build
+cd ../../..
 dotnet test MadlanExplorer.sln
 dotnet run --project src/MadlanExplorer
 ```
 
+`npm run build` writes the compiled UI into `src/MadlanExplorer/wwwroot`, which `dotnet run` serves as static files. `src/MadlanExplorer/wwwroot` is generated and gitignored — re-run the build after pulling or changing anything under `client/`. For frontend iteration with hot reload, run `npm run dev` inside `client/` instead; it proxies `/api` and `/healthz` to the backend (start `dotnet run` first).
+
 Open `http://localhost:5000/healthz` or the port printed by ASP.NET Core.
 
 ## Run with Docker
+
+The Docker build is self-contained — it builds the React client (Node) and the .NET backend as separate stages, so no Node or .NET SDK is required on the host:
 
 ```powershell
 docker build --target test -t madlan-explorer-test .
@@ -21,7 +29,7 @@ docker build -t madlan-explorer .
 docker run --rm -p 8080:8080 madlan-explorer
 ```
 
-Open `http://localhost:8080/healthz`.
+Open `http://localhost:8080/healthz`. To test the natural-language question flow with a real Grok key, copy `.env.example` to `.env`, fill in `Llm__ApiKey` and the four `Llm__Models__*` entries, and run with `--env-file .env`.
 
 ## Current scope
 

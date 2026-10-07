@@ -9,10 +9,20 @@ public class FakeDealRepository : IDealRepository
     public DatasetFacts Facts { get; set; } = new();
     public DealDetail? Deal { get; set; }
 
+    public List<DataQuery> ReceivedDataQueries { get; } = [];
+    public DataQueryResult DataResult { get; set; } = new();
+    public Func<DataQuery, DataQueryResult>? DataResultFactory { get; set; }
+
     public DealQueryResult Execute(DealQuery query)
     {
         ReceivedQuery = query;
         return Result;
+    }
+
+    public DataQueryResult ExecuteDataQuery(DataQuery query)
+    {
+        ReceivedDataQueries.Add(query);
+        return DataResultFactory?.Invoke(query) ?? DataResult;
     }
 
     public DatasetFacts GetDatasetFacts()

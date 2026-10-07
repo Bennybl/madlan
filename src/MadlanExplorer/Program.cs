@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 
 namespace MadlanExplorer;
@@ -17,7 +18,7 @@ public static class Application
     public static WebApplication Build(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
-        builder.Services.AddControllers();
+        builder.Services.AddControllers().AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
         builder.Services.Configure<DatasetOptions>(builder.Configuration.GetSection(DatasetOptions.SectionName));
         builder.Services.Configure<LlmOptions>(builder.Configuration.GetSection(LlmOptions.SectionName));
         builder.Services.Configure<MessagesOptions>(builder.Configuration.GetSection(MessagesOptions.SectionName));
@@ -27,10 +28,7 @@ public static class Application
         builder.Services.AddSingleton<IDealRepository, SqliteDealRepository>();
         builder.Services.AddSingleton<QueryService>();
         builder.Services.AddHttpClient<ILlmProvider, GrokLlmProvider>();
-        builder.Services.AddSingleton<QueryGenerationService>();
-        builder.Services.AddSingleton<QueryVerificationService>();
-        builder.Services.AddSingleton<ResultSummaryService>();
-        builder.Services.AddSingleton<ResultVerificationService>();
+        builder.Services.AddSingleton<QueryOrchestrationService>();
         builder.Services.AddSingleton<MadlanApplicationService>();
 
         var app = builder.Build();
